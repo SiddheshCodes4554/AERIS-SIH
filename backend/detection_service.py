@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 import threading
 import logging
 from datetime import datetime
@@ -85,8 +86,14 @@ class DetectionService:
         
         # Thread synchronization & output storage
         self.data_lock = threading.Lock()
-        self.latest_annotated_frame = None
-        self.latest_annotated_jpeg = None
+        
+        # Pre-initialize standby frame so stream never hangs on startup
+        standby_init = np.zeros((720, 1280, 3), dtype=np.uint8)
+        standby_init[:] = (11, 14, 15)
+        ret_init, jpeg_init = cv2.imencode('.jpg', standby_init, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        self.latest_annotated_frame = standby_init
+        self.latest_annotated_jpeg = jpeg_init.tobytes() if ret_init else None
+        
         self.latest_detections = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "total_detections": 0,
@@ -487,8 +494,8 @@ class DetectionService:
         with self.data_lock:
             return list(self.event_history)
 
-    def generate_annotated_frames(self):
-        """Yields MJPEG stream of YOLO annotated frames for /api/video/detection-feed."""
+    async def generate_annotated_frames(self):
+        """Yields MJPEG stream of YOLO annotated frames for /api/video/detection-feed asynchronously."""
         while self.is_running:
             with self.data_lock:
                 frame_data = self.latest_annotated_jpeg
@@ -498,7 +505,7 @@ class DetectionService:
                     b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n'
                 )
-            time.sleep(0.033)
+            await asyncio.sleep(0.033)
 
     def shutdown(self):
         """Releases resources and stops inference thread."""

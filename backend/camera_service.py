@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 import math
 import threading
 import logging
@@ -32,8 +33,12 @@ class CameraService:
         self.cap = None
         self.is_running = False
         self.is_camera_available = False
-        self.latest_frame = None
-        self.latest_jpeg = None
+        
+        # Initialize with immediate standby frame so streams never hang
+        standby_frame, standby_jpeg = self._create_standby_frame("● INITIALIZING AERIS CAMERA PAYLOAD...")
+        self.latest_frame = standby_frame
+        self.latest_jpeg = standby_jpeg
+        
         self.frame_lock = threading.Lock()
         self.cap_lock = threading.Lock()
         self.thread = None
@@ -260,8 +265,8 @@ class CameraService:
         logger.info(f"Force reconnecting Camera [{self.camera_index}]...")
         return self.select_camera(self.camera_index)
 
-    def generate_frames(self):
-        """Yields multipart MJPEG chunks for FastAPI StreamingResponse."""
+    async def generate_frames(self):
+        """Yields multipart MJPEG chunks for FastAPI StreamingResponse asynchronously."""
         while self.is_running:
             with self.frame_lock:
                 frame_data = self.latest_jpeg
@@ -271,7 +276,7 @@ class CameraService:
                     b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n'
                 )
-            time.sleep(0.033)
+            await asyncio.sleep(0.033)
 
     def shutdown(self):
         """Releases the hardware camera and stops capture thread."""
