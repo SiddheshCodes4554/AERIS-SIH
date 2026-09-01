@@ -395,7 +395,7 @@ class DetectionService:
         
         while self.is_running:
             if not self.is_model_loaded or self.model is None:
-                time.sleep(0.5)
+                time.sleep(0.3)
                 continue
             
             with camera_service.frame_lock:
@@ -403,13 +403,30 @@ class DetectionService:
                 is_cam_avail = camera_service.is_camera_available
             
             if frame is None:
+                time.sleep(0.03)
+                continue
+
+            # If camera is in standby mode, deliver the standby frame directly without wasting CPU on YOLO
+            if not is_cam_avail:
+                ret, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                with self.data_lock:
+                    self.latest_annotated_frame = frame
+                    self.latest_annotated_jpeg = jpeg.tobytes() if ret else None
+                    self.latest_detections = {
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "total_detections": 0,
+                        "detections": [],
+                        "model": self.model_name,
+                        "inference_fps": 0.0,
+                        "inference_time_ms": 0.0
+                    }
                 time.sleep(0.04)
                 continue
 
             try:
                 t0 = time.time()
                 
-                # Single shared genuine YOLO inference
+                # Single shared genuine YOLO inference on real camera frame
                 results = self.model.predict(
                     source=frame,
                     conf=self.confidence_threshold,
