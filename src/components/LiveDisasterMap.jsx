@@ -31,7 +31,7 @@ const createDroneMarker = (heading, isOffline, isBacktrack) => {
         <!-- Directional Cone & Center Disc -->
         <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
           <div style="position: absolute; width: 34px; height: 34px; border-radius: 50%; background: ${pulseColor}; animation: ping-subtle 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="position: absolute; width: 26px; height: 26px; border-radius: 50%; background: #070909; border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; transform: rotate(${heading}deg); box-shadow: 0 0 14px ${color};">
+          <div style="position: absolute; width: 26px; height: 26px; border-radius: 50%; background: #070909; border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; transform: rotate(${heading || 0}deg); box-shadow: 0 0 14px ${color};">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="${color}">
               <polygon points="12 2 20 20 12 16 4 20 12 2"></polygon>
             </svg>
@@ -48,7 +48,7 @@ const createDroneMarker = (heading, isOffline, isBacktrack) => {
 
 // 2. Checkpoint Marker with Numbered Label & Last Connected Badge
 const createCheckpointIcon = (cp) => {
-  const isDone = cp.status === 'COMPLETED';
+  const isDone = cp.status === 'COMPLETED' || cp.status === 'PASSED' || cp.isDone;
   const isLast = cp.isLastConnected;
   const color = isLast ? '#62C370' : isDone ? '#3B8EDB' : '#58605E';
   const bg = isLast ? 'rgba(98, 195, 112, 0.25)' : isDone ? '#181D1E' : '#0B0E0F';
@@ -62,7 +62,7 @@ const createCheckpointIcon = (cp) => {
           </div>
         ` : ''}
         <div style="width: 20px; height: 20px; border-radius: 50%; background: ${bg}; border: 1.5px solid ${color}; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 8.5px; font-weight: bold; color: ${isDone ? '#F2F4F3' : '#8C9492'}; box-shadow: 0 0 8px ${isLast ? 'rgba(98,195,112,0.6)' : 'rgba(59,142,219,0.3)'};">
-          ${cp.label.replace('CP-', '')}
+          ${(cp.label || '').replace('CP-', '')}
         </div>
         <div style="background: rgba(7, 9, 9, 0.85); color: #8C9492; font-family: monospace; font-size: 7px; padding: 0.5px 3px; border-radius: 2px; margin-top: 1px;">
           ${cp.label}
@@ -82,7 +82,7 @@ const createSurvivorIcon = (surv) => {
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
         <div style="background: #111516; border: 1px solid #E2A24C; color: #E2A24C; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 0.5px 4px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 8px rgba(226,162,76,0.6);">
-          👤 ${surv.confidence}% [${surv.priority.substring(0,4)}]
+          👤 ${surv.confidence}% [${(surv.priority || 'PRIO').substring(0,4)}]
         </div>
         <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(226, 162, 76, 0.25); border: 2px solid #E2A24C; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(226, 162, 76, 0.8);">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="#E2A24C">
@@ -117,7 +117,7 @@ const createHazardIcon = (haz) => {
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
         <div style="background: #111516; border: 1px solid ${color}; color: ${color}; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 0.5px 3px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 6px ${color}60;">
-          ${haz.label.substring(0, 14)}
+          ${(haz.label || 'HAZARD').substring(0, 14)}
         </div>
         <div style="width: 24px; height: 24px; border-radius: 50%; background: ${color}25; border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px ${color}80;">
           <svg width="13" height="13" viewBox="0 0 24 24">
@@ -133,15 +133,10 @@ const createHazardIcon = (haz) => {
   });
 };
 
-function MapActions({ onZoomIn, onZoomOut, onRecenter }) {
-  const map = useMap();
-  return null;
-}
-
 export default function LiveDisasterMap({
   missionState,
   checkpoints = [],
-  flightPaths,
+  flightPaths = {},
   survivors = [],
   hazards = [],
   heatmapData = [],
@@ -151,6 +146,10 @@ export default function LiveDisasterMap({
   const [showRoute, setShowRoute] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showDetections, setShowDetections] = useState(true);
+
+  const traveledPath = flightPaths.traveled || flightPaths.completed || [];
+  const plannedPath = flightPaths.planned || flightPaths.upcoming || [];
+  const backtrackPath = flightPaths.backtrack || [];
 
   const dronePos = [30.5610, 79.5680]; // Current Drone position (Near CP-04)
 
@@ -246,20 +245,22 @@ export default function LiveDisasterMap({
           {showRoute && (
             <>
               {/* Traveled / Completed Path (Dimmer blue line) */}
-              <Polyline
-                positions={flightPaths.traveled}
-                pathOptions={{
-                  color: isBacktracking ? 'rgba(59, 142, 219, 0.4)' : '#3B8EDB',
-                  weight: 3,
-                  opacity: 0.9,
-                  dashArray: '3, 6'
-                }}
-              />
+              {traveledPath.length > 0 && (
+                <Polyline
+                  positions={traveledPath}
+                  pathOptions={{
+                    color: isBacktracking ? 'rgba(59, 142, 219, 0.4)' : '#3B8EDB',
+                    weight: 3,
+                    opacity: 0.9,
+                    dashArray: '3, 6'
+                  }}
+                />
+              )}
 
               {/* Planned Forward Route (Soft bright line) */}
-              {!isOffline && !isBacktracking && (
+              {!isOffline && !isBacktracking && plannedPath.length > 0 && (
                 <Polyline
-                  positions={flightPaths.planned}
+                  positions={plannedPath}
                   pathOptions={{
                     color: '#F2F4F3',
                     weight: 1.5,
@@ -269,10 +270,10 @@ export default function LiveDisasterMap({
                 />
               )}
 
-              {/* AUTONOMOUS BACKTRACKING ROUTE (Amber Dashed Animated Path to CP-03) */}
-              {isBacktracking && (
+              {/* AUTONOMOUS BACKTRACKING ROUTE (Amber Dashed Animated Path) */}
+              {isBacktracking && backtrackPath.length > 0 && (
                 <Polyline
-                  positions={flightPaths.backtrack}
+                  positions={backtrackPath}
                   pathOptions={{
                     color: '#E2A24C',
                     weight: 4,
@@ -281,7 +282,7 @@ export default function LiveDisasterMap({
                   }}
                 >
                   <Tooltip sticky direction="top" className="font-mono text-xs text-amber-300 bg-black/90">
-                    ◄ AUTONOMOUS BACKTRACKING: Returning to CP-03
+                    ◄ AUTONOMOUS BACKTRACKING: Returning to Checkpoint
                   </Tooltip>
                 </Polyline>
               )}
@@ -301,10 +302,10 @@ export default function LiveDisasterMap({
                     <span className="font-bold text-aeris-textPrimary">{cp.label}: {cp.name}</span>
                     <span className="text-aeris-green text-[10px] font-mono font-semibold px-1 rounded bg-aeris-green/10">{cp.status}</span>
                   </div>
-                  <p className="text-[#A0AAB0] text-[11px] font-mono">Alt: <strong className="text-[#F2F4F3]">{cp.altitude}m AGL</strong></p>
+                  <p className="text-[#A0AAB0] text-[11px] font-mono">Alt: <strong className="text-[#F2F4F3]">{cp.altitude || 50}m AGL</strong></p>
                   {cp.isLastConnected && (
                     <p className="text-aeris-green font-bold text-[10px] mt-1 font-mono">
-                      📶 LAST KNOWN LINK (CP-03)
+                      📶 LAST KNOWN LINK ({cp.label})
                     </p>
                   )}
                 </div>
@@ -324,14 +325,14 @@ export default function LiveDisasterMap({
                   <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
                     <span className="font-bold text-aeris-amber text-[12px] font-mono">{surv.label}</span>
                     <span className="bg-aeris-red/25 text-aeris-red text-[9.5px] font-mono px-1.5 py-0.2 rounded font-bold border border-aeris-red/40">
-                      {surv.priority}
+                      {surv.priority || 'URGENT'}
                     </span>
                   </div>
                   <div className="space-y-1 text-[11px] font-sans">
                     <p className="flex justify-between"><span className="text-[#8C9492]">Confidence:</span><strong className="text-aeris-green font-mono">{surv.confidence}%</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Sector:</span><strong className="text-[#F2F4F3] font-mono">{surv.sector}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{surv.timestamp}</strong></p>
-                    <p className="text-[11px] text-[#A0AAB0] pt-1 border-t border-white/10 leading-relaxed font-light">{surv.details}</p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Sector:</span><strong className="text-[#F2F4F3] font-mono">{surv.sector || 'Sector B-4'}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{surv.timestamp || '10:41 AM'}</strong></p>
+                    <p className="text-[11px] text-[#A0AAB0] pt-1 border-t border-white/10 leading-relaxed font-light">{surv.details || 'Detected by Edge AI'}</p>
                   </div>
                 </div>
               </Popup>
@@ -349,12 +350,12 @@ export default function LiveDisasterMap({
                 <div className="font-sans text-xs p-1 max-w-[240px] text-[#F2F4F3]">
                   <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
                     <span className="font-bold text-aeris-red text-[12px] font-mono">{haz.label}</span>
-                    <span className="text-[9.5px] font-mono text-aeris-amber font-bold px-1.5 py-0.2 rounded bg-aeris-amber/20 border border-aeris-amber/30">{haz.severity}</span>
+                    <span className="text-[9.5px] font-mono text-aeris-amber font-bold px-1.5 py-0.2 rounded bg-aeris-amber/20 border border-aeris-amber/30">{haz.severity || 'HIGH'}</span>
                   </div>
                   <div className="space-y-1 text-[11px] font-sans">
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Sector:</span><strong className="text-[#F2F4F3] font-mono">{haz.sector}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{haz.timestamp}</strong></p>
-                    <p className="text-[11px] text-[#A0AAB0] pt-1 border-t border-white/10 leading-relaxed font-light">{haz.details}</p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Sector:</span><strong className="text-[#F2F4F3] font-mono">{haz.sector || 'Gorge'}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{haz.timestamp || '10:40 AM'}</strong></p>
+                    <p className="text-[11px] text-[#A0AAB0] pt-1 border-t border-white/10 leading-relaxed font-light">{haz.details || 'Identified by sensor suite'}</p>
                   </div>
                 </div>
               </Popup>
@@ -364,7 +365,7 @@ export default function LiveDisasterMap({
           {/* 8. Active AERIS-01 Drone Marker */}
           <Marker
             position={dronePos}
-            icon={createDroneMarker(missionState.heading, isOffline, isBacktracking)}
+            icon={createDroneMarker(missionState.heading || 42, isOffline, isBacktracking)}
           >
             <Popup>
               <div className="font-sans text-xs p-1 text-[#F2F4F3]">
@@ -372,7 +373,7 @@ export default function LiveDisasterMap({
                   <span className="font-bold text-aeris-cyan font-mono">{missionState.droneId}</span>
                   <span className="text-aeris-green text-[9.5px] font-mono">{missionState.flightMode}</span>
                 </div>
-                <p className="text-[#A0AAB0] text-[11px] font-mono">Alt: <strong className="text-[#F2F4F3]">{missionState.altitude}m</strong> • Speed: <strong className="text-[#F2F4F3]">{missionState.speed} m/s</strong></p>
+                <p className="text-[#A0AAB0] text-[11px] font-mono">Alt: <strong className="text-[#F2F4F3]">{missionState.altitude}</strong> • Speed: <strong className="text-[#F2F4F3]">{missionState.speed}</strong></p>
                 {isBacktracking && (
                   <p className="text-aeris-amber text-[10px] font-mono font-bold mt-1">
                     AUTONOMOUS BACKTRACKING IN PROGRESS (72%)
@@ -387,7 +388,7 @@ export default function LiveDisasterMap({
         {isBacktracking && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-aeris-panel/95 border border-aeris-amber/60 px-3.5 py-1.5 rounded-card backdrop-blur-md font-mono text-[11px] text-aeris-amber font-bold shadow-glow-amber flex items-center space-x-2 pointer-events-auto">
             <Radio className="w-3.5 h-3.5 animate-spin text-aeris-amber" />
-            <span>AUTONOMOUS BACKTRACKING: RETURNING TO CP-03 (72%)</span>
+            <span>AUTONOMOUS BACKTRACKING: RETURNING TO CHECKPOINT (72%)</span>
           </div>
         )}
 

@@ -1,6 +1,9 @@
 import React from 'react';
 
 export default function BottomStatusBar({ telemetry, isOfflineMode }) {
+  const alt = String(telemetry.position.altitudeAgl || '42.5').replace('m', '');
+  const spd = String(telemetry.position.groundSpeed || '8.5').replace('m/s', '').trim();
+
   return (
     <footer className="h-7 bg-[#090C0D] border-t border-aeris-border px-4 flex items-center justify-between text-[10px] font-mono select-none text-aeris-textSecondary shrink-0 z-20">
       {/* Left items */}
@@ -27,13 +30,13 @@ export default function BottomStatusBar({ telemetry, isOfflineMode }) {
         <span className="text-aeris-textMuted">|</span>
 
         <span>
-          ALT: <strong className="text-aeris-textPrimary">{telemetry.position.altitudeAgl}m</strong>
+          ALT: <strong className="text-aeris-textPrimary">{alt}m</strong>
         </span>
 
         <span className="text-aeris-textMuted">|</span>
 
         <span>
-          SPEED: <strong className="text-aeris-textPrimary">{telemetry.position.groundSpeed} m/s</strong>
+          SPEED: <strong className="text-aeris-textPrimary">{spd} m/s</strong>
         </span>
       </div>
 

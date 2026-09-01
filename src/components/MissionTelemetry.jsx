@@ -15,6 +15,9 @@ import {
 } from 'lucide-react';
 
 export default function MissionTelemetry({ missionState, isOffline, isBacktracking }) {
+  const speedNum = parseFloat(missionState.speed) || 8.5;
+  const altitudeNum = parseFloat(missionState.altitude) || 42.5;
+
   return (
     <div className="w-full h-full aeris-panel-container p-3 flex flex-col justify-between select-none font-sans overflow-hidden">
       {/* 1. Header & Drone Unit */}
@@ -33,7 +36,7 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
 
         {/* Mission Status Header Strip */}
         <div className="flex items-center justify-between text-[10px] font-mono text-aeris-textSecondary mb-2 px-1">
-          <span>MISSION: <strong className="text-aeris-textPrimary">{missionState.missionName.split(' ')[0]}</strong></span>
+          <span>MISSION: <strong className="text-aeris-textPrimary">{(missionState.missionName || 'Flood').split(' ')[0]}</strong></span>
           <span className="text-aeris-green font-bold flex items-center">
             <span className="w-1.5 h-1.5 rounded-full bg-aeris-green mr-1 shadow-glow-green"></span>
             ACTIVE
@@ -70,7 +73,7 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
           <div className="aeris-surface-card p-2">
             <span className="text-[9px] text-aeris-textMuted block">ALTITUDE</span>
             <div className="text-lg font-light text-aeris-textPrimary mt-0.5">
-              {missionState.altitude} <span className="text-[10px] text-aeris-textSecondary">m</span>
+              {altitudeNum} <span className="text-[10px] text-aeris-textSecondary">m</span>
             </div>
             <span className="text-[8.5px] text-aeris-textMuted block">AGL CARRIER</span>
           </div>
@@ -78,9 +81,9 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
           <div className="aeris-surface-card p-2">
             <span className="text-[9px] text-aeris-textMuted block">SPEED</span>
             <div className="text-lg font-light text-aeris-textPrimary mt-0.5">
-              {missionState.speed} <span className="text-[10px] text-aeris-textSecondary">m/s</span>
+              {speedNum} <span className="text-[10px] text-aeris-textSecondary">m/s</span>
             </div>
-            <span className="text-[8.5px] text-aeris-textMuted block">{(missionState.speed * 3.6).toFixed(1)} km/h</span>
+            <span className="text-[8.5px] text-aeris-textMuted block">{(speedNum * 3.6).toFixed(1)} km/h</span>
           </div>
         </div>
 
@@ -101,7 +104,7 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
 
           <div className="flex justify-between text-[9px] text-aeris-textMuted pt-0.5 border-t border-white/5">
             <span>CUR: <strong className="text-aeris-textPrimary">{missionState.checkpoint}</strong></span>
-            <span>NEXT: <strong className="text-aeris-blue">{missionState.nextCheckpoint}</strong> ({missionState.nextDistanceKm} km)</span>
+            <span>NEXT: <strong className="text-aeris-blue">{missionState.nextCheckpoint || 'CP-04'}</strong> ({missionState.nextDistanceKm || 1.2} km)</span>
           </div>
         </div>
       </div>
