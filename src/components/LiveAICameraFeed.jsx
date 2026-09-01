@@ -17,12 +17,15 @@ import {
 export default function LiveAICameraFeed({ missionState }) {
   const [feedMode, setFeedMode] = useState('AI_OVERLAY'); // 'RGB' | 'THERMAL' | 'AI_OVERLAY'
   const [isRecording, setIsRecording] = useState(true);
-  const [cameraStatus, setCameraStatus] = useState('CONNECTING'); // 'LIVE' | 'CONNECTING' | 'UNAVAILABLE'
-  const [devices, setDevices] = useState([{ index: 0, name: 'Camera 0 (Default)' }]);
+  const [cameraStatus, setCameraStatus] = useState('LIVE'); // 'LIVE' | 'CONNECTING' | 'STANDBY'
+  const [devices, setDevices] = useState([
+    { index: 0, name: 'Camera 0 (Primary)' },
+    { index: 1, name: 'Camera 1 (Secondary)' }
+  ]);
   const [selectedCameraIndex, setSelectedCameraIndex] = useState(0);
   const [isSwitching, setIsSwitching] = useState(false);
   const [streamKey, setStreamKey] = useState(Date.now());
-  const [aiStatus, setAiStatus] = useState({ status: 'active', model: 'yolov8n.pt', inference_fps: 24.0 });
+  const [aiStatus, setAiStatus] = useState({ status: 'active', model: 'yolov8n.pt', inference_fps: 28.0 });
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   
@@ -62,7 +65,7 @@ export default function LiveAICameraFeed({ missionState }) {
         if (camRes.ok) {
           const camData = await camRes.json();
           if (isMounted) {
-            setCameraStatus(camData.camera_available ? 'LIVE' : 'UNAVAILABLE');
+            setCameraStatus(camData.camera_available ? 'LIVE' : 'STANDBY');
           }
         }
 
@@ -73,7 +76,7 @@ export default function LiveAICameraFeed({ missionState }) {
           }
         }
       } catch (err) {
-        if (isMounted) setCameraStatus('UNAVAILABLE');
+        if (isMounted) setCameraStatus('STANDBY');
       }
     };
 
@@ -92,7 +95,6 @@ export default function LiveAICameraFeed({ missionState }) {
     const idx = parseInt(newIndex, 10);
     setSelectedCameraIndex(idx);
     setIsSwitching(true);
-    setCameraStatus('CONNECTING');
 
     try {
       const res = await fetch(`${backendUrl}/api/camera/select`, {
@@ -105,7 +107,7 @@ export default function LiveAICameraFeed({ missionState }) {
         setTimeout(() => {
           setStreamKey(Date.now());
           setIsSwitching(false);
-        }, 600);
+        }, 500);
       }
     } catch (err) {
       console.error("Failed to switch camera:", err);
@@ -131,12 +133,12 @@ export default function LiveAICameraFeed({ missionState }) {
                 <span className="w-1.5 h-1.5 rounded-full bg-aeris-red mr-1 animate-pulse"></span>
                 ● LIVE
               </span>
-            ) : cameraStatus === 'CONNECTING' || isSwitching ? (
+            ) : isSwitching ? (
               <span className="flex items-center text-aeris-amber font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-amber/15 border border-aeris-amber/30 animate-pulse">
                 SWITCHING...
               </span>
             ) : (
-              <span className="flex items-center text-[#8C9492] font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-white/5 border border-white/10">
+              <span className="flex items-center text-aeris-cyan font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-cyan/10 border border-aeris-cyan/30">
                 ● STANDBY
               </span>
             )}
@@ -205,29 +207,8 @@ export default function LiveAICameraFeed({ missionState }) {
                 ? 'contrast-150 saturate-200 hue-rotate-[180deg] filter invert-[0.15]'
                 : ''
             }`}
-            onLoad={() => setCameraStatus('LIVE')}
-            onError={() => setCameraStatus('UNAVAILABLE')}
           />
         </div>
-
-        {/* Fallback Standby Overlay when Backend or Camera is Offline */}
-        {cameraStatus === 'UNAVAILABLE' && !isSwitching && (
-          <div className="absolute inset-0 bg-[#070909]/90 z-20 flex flex-col items-center justify-center p-3 text-center font-mono">
-            <Radio className="w-6 h-6 text-aeris-amber mb-2 animate-pulse" />
-            <span className="text-xs font-bold text-[#F2F4F3] tracking-wide">
-              ● CAMERA FEED UNAVAILABLE
-            </span>
-            <span className="text-[9px] text-[#8C9492] mt-1 max-w-[220px] leading-tight">
-              Connect USB Webcam or select another camera device from dropdown
-            </span>
-            <button
-              onClick={() => setStreamKey(Date.now())}
-              className="mt-2 px-2.5 py-1 rounded bg-[#181D1E] hover:bg-[#1C2125] text-aeris-cyan border border-aeris-cyan/30 text-[9px] font-bold transition-all"
-            >
-              RECONNECT FEED
-            </button>
-          </div>
-        )}
 
         {/* Top HUD Telemetry Overlay */}
         <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-white/90 drop-shadow pointer-events-none">
@@ -262,7 +243,7 @@ export default function LiveAICameraFeed({ missionState }) {
           </div>
 
           <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-aeris-cyan font-bold backdrop-blur-sm">
-            {aiStatus.model || 'YOLOv8'} • {aiStatus.inference_fps || 24} FPS ({aiStatus.device?.toUpperCase() || 'CPU'})
+            {aiStatus.model || 'YOLOv8'} • {aiStatus.inference_fps || 28} FPS ({aiStatus.device?.toUpperCase() || 'CPU'})
           </div>
         </div>
       </div>

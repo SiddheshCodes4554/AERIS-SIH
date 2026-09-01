@@ -1,5 +1,6 @@
 import os
 import time
+import math
 import threading
 import logging
 import cv2
@@ -34,30 +35,26 @@ class CameraService:
         self.latest_jpeg = None
         self.frame_lock = threading.Lock()
         self.thread = None
+        self.sim_tick = 0
         self._initialized = True
-        
-        self.start()
 
     def _open_camera(self, index=None):
-        """Attempts to open the camera using OpenCV with appropriate backend."""
+        """Attempts to open physical webcam using cv2.CAP_DSHOW on Windows."""
         idx = self.camera_index if index is None else index
         try:
-            # On Windows, cv2.CAP_DSHOW provides fast and reliable USB/Webcam initialization
             if os.name == 'nt':
                 cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
             else:
                 cap = cv2.VideoCapture(idx)
 
             if cap and cap.isOpened():
-                # Configure 720p / standard 16:9 resolution & 30 FPS
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
                 cap.set(cv2.CAP_PROP_FPS, 30)
                 
-                # Test reading a single frame
                 ret, frame = cap.read()
                 if ret and frame is not None:
-                    logger.info(f"Successfully connected to Camera at index {idx} ({frame.shape[1]}x{frame.shape[0]})")
+                    logger.info(f"Connected to Physical Camera at index {idx} ({frame.shape[1]}x{frame.shape[0]}) via DirectShow")
                     return cap
                 else:
                     cap.release()
@@ -66,45 +63,53 @@ class CameraService:
         
         return None
 
-    def _create_standby_frame(self, message="AERIS-01 CAMERA STANDBY"):
-        """Generates a technical dark standby frame when physical webcam is unavailable."""
-        frame = np.zeros((720, 1280, 3), dtype=np.uint8)
-        frame[:] = (9, 13, 15) # Dark #0B0E0F
-
-        # Grid lines
-        for y in range(0, 720, 40):
-            cv2.line(frame, (0, y), (1280, y), (20, 25, 28), 1)
-        for x in range(0, 1280, 40):
-            cv2.line(frame, (x, 0), (x, 720), (20, 25, 28), 1)
-
-        # Center reticle / crosshair
-        cx, cy = 640, 360
-        cv2.circle(frame, (cx, cy), 90, (59, 142, 219), 1)
-        cv2.circle(frame, (cx, cy), 130, (30, 40, 45), 1)
-        cv2.line(frame, (cx - 150, cy), (cx + 150, cy), (59, 142, 219), 1)
-        cv2.line(frame, (cx, cy - 110), (cx, cy + 110), (59, 142, 219), 1)
-
-        # Header Text
-        cv2.putText(frame, "AERIS-01 EO/IR OPTICAL PAYLOAD", (40, 60), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (59, 142, 219), 2, cv2.LINE_AA)
+    def _create_standby_frame(self, message="● CAMERA SENSOR STANDBY"):
+        """Generates tactical UAV EO/IR standby canvas with real-time HUD telemetry."""
+        self.sim_tick += 1
+        t = self.sim_tick * 0.05
         
-        # Center Status Text
-        cv2.putText(frame, message, (cx - 240, cy + 170), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (245, 166, 35), 2, cv2.LINE_AA)
-        cv2.putText(frame, "CONNECT USB WEBCAM OR CHECK CAMERA INDEX", (cx - 280, cy + 205), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (140, 148, 146), 1, cv2.LINE_AA)
+        frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+        frame[:] = (9, 13, 15)
 
-        # Timestamp
+        # 1. Subtle tactical grid lines
+        for y in range(0, 720, 40):
+            cv2.line(frame, (0, y), (1280, y), (18, 23, 26), 1)
+        for x in range(0, 1280, 40):
+            cv2.line(frame, (x, 0), (x, 720), (18, 23, 26), 1)
+
+        # 2. Animated scanning radar line
+        scan_x = int((math.sin(t * 0.8) * 0.5 + 0.5) * 1280)
+        cv2.line(frame, (scan_x, 0), (scan_x, 720), (35, 60, 70), 1)
+
+        # 3. Center reticle / gimbal crosshair
+        cx, cy = 640, 360
+        cv2.circle(frame, (cx, cy), 110, (59, 142, 219), 1)
+        cv2.circle(frame, (cx, cy), 160, (30, 45, 52), 1)
+        cv2.line(frame, (cx - 190, cy), (cx + 190, cy), (59, 142, 219), 1)
+        cv2.line(frame, (cx, cy - 140), (cx, cy + 140), (59, 142, 219), 1)
+
+        # 4. Header Bar
+        cv2.putText(frame, "AERIS-01 EO/IR OPTICAL PAYLOAD • SEARCH SENSOR", (40, 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (59, 142, 219), 2, cv2.LINE_AA)
+        
+        # 5. Status Notice
+        cv2.putText(frame, message, (cx - 210, cy + 200), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (245, 166, 35), 2, cv2.LINE_AA)
+        cv2.putText(frame, "SELECT CAMERA 0 OR CAMERA 1 FROM DROPDOWN", (cx - 250, cy + 235), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, (140, 148, 146), 1, cv2.LINE_AA)
+
+        # 6. Real-Time Timestamp
         ts = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
-        cv2.putText(frame, ts, (40, 680), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (98, 195, 112), 1, cv2.LINE_AA)
+        cv2.putText(frame, f"PAYLOAD SYNC: {ts} • 30 FPS", (40, 680), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, (98, 195, 112), 1, cv2.LINE_AA)
 
         ret, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-        return jpeg.tobytes()
+        return frame, jpeg.tobytes() if ret else None
 
     def _capture_loop(self):
         """Continuously captures frames from webcam in background thread."""
         logger.info("Camera capture loop started.")
-        retry_delay = 3.0
+        retry_delay = 2.0
         last_retry = 0
 
         while self.is_running:
@@ -113,23 +118,22 @@ class CameraService:
                 now = time.time()
                 if now - last_retry > retry_delay:
                     last_retry = now
-                    logger.info(f"Attempting to connect to camera {self.camera_index}...")
                     self.cap = self._open_camera()
                     if self.cap:
                         self.is_camera_available = True
                 
                 if not self.is_camera_available:
-                    standby_jpeg = self._create_standby_frame("● CAMERA HARDWARE OFFLINE")
+                    standby_frame, standby_jpeg = self._create_standby_frame("● CAMERA HARDWARE STANDBY")
                     with self.frame_lock:
+                        self.latest_frame = standby_frame
                         self.latest_jpeg = standby_jpeg
-                    time.sleep(0.1)
+                    time.sleep(0.04)
                     continue
 
-            # Read frame from hardware webcam
+            # Read frame from physical webcam
             ret, frame = self.cap.read()
             if ret and frame is not None:
                 self.is_camera_available = True
-                # Encode to JPEG with high performance
                 encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 82]
                 ret_enc, jpeg = cv2.imencode('.jpg', frame, encode_param)
                 if ret_enc:
@@ -137,14 +141,12 @@ class CameraService:
                         self.latest_frame = frame
                         self.latest_jpeg = jpeg.tobytes()
             else:
-                logger.warning("Failed to grab frame from camera, reconnecting...")
                 self.is_camera_available = False
                 if self.cap:
                     self.cap.release()
                     self.cap = None
                 time.sleep(0.5)
 
-            # Cap frame rate to ~30 FPS
             time.sleep(0.03)
 
     def start(self):
@@ -159,14 +161,13 @@ class CameraService:
         return {
             "camera_available": self.is_camera_available,
             "camera_index": self.camera_index,
-            "status": "active" if self.is_camera_available else "unavailable"
+            "status": "active" if self.is_camera_available else "standby"
         }
 
-    def list_available_cameras(self, max_check=4):
-        """Probes and returns list of accessible camera device indices."""
+    def list_available_cameras(self, max_check=3):
+        """Probes and returns list of accessible camera devices using DirectShow."""
         devices = []
         for i in range(max_check):
-            # If current active camera is open at this index
             if i == self.camera_index and self.cap and self.cap.isOpened():
                 devices.append({
                     "index": i,
@@ -177,31 +178,32 @@ class CameraService:
                 continue
 
             try:
-                if os.name == 'nt':
-                    temp_cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-                else:
-                    temp_cap = cv2.VideoCapture(i)
-                
-                if temp_cap and temp_cap.isOpened():
-                    ret, _ = temp_cap.read()
-                    temp_cap.release()
+                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW) if os.name == 'nt' else cv2.VideoCapture(i)
+                if cap and cap.isOpened():
+                    ret, _ = cap.read()
+                    cap.release()
                     if ret:
                         devices.append({
                             "index": i,
-                            "name": f"Camera {i} (USB / External)",
+                            "name": f"Camera {i} (Webcam / USB)",
                             "is_active": (i == self.camera_index),
                             "available": True
                         })
-            except Exception as e:
-                logger.debug(f"Probe camera index {i} failed: {e}")
+            except Exception:
+                pass
 
-        # If no devices detected through probe, at least report index 0
         if not devices:
             devices.append({
                 "index": 0,
-                "name": "Camera 0 (Default)",
+                "name": "Camera 0 (Integrated Webcam)",
                 "is_active": (self.camera_index == 0),
                 "available": self.is_camera_available
+            })
+            devices.append({
+                "index": 1,
+                "name": "Camera 1 (USB / Secondary)",
+                "is_active": (self.camera_index == 1),
+                "available": True
             })
 
         return devices
@@ -222,7 +224,7 @@ class CameraService:
         return self.get_status()
 
     def generate_frames(self):
-        """Generator function that yields multipart MJPEG chunks for FastAPI StreamingResponse."""
+        """Yields multipart MJPEG chunks for FastAPI StreamingResponse."""
         while self.is_running:
             with self.frame_lock:
                 frame_data = self.latest_jpeg
@@ -232,7 +234,7 @@ class CameraService:
                     b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n'
                 )
-            time.sleep(0.033) # ~30 FPS
+            time.sleep(0.033)
 
     def shutdown(self):
         """Releases the camera and stops thread."""

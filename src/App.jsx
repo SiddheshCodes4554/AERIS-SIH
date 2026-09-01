@@ -23,7 +23,6 @@ import {
   SURVIVORS_LIST,
   HAZARDS_LIST,
   RISK_HEATMAP_DATA,
-  AI_DETECTIONS_LOG,
   CHRONOLOGICAL_EVENTS
 } from './data/mockData.js';
 
@@ -40,41 +39,86 @@ export default function App() {
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
 
-  // Real-Time YOLO Event Stream Listener via WebSocket
+  // 1. Initial Telemetry Fetch & Real-Time WebSocket Listener
   useEffect(() => {
     let ws = null;
-    try {
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'detection') {
-            const det = msg.data;
-            const now = new Date().toISOString().substring(11, 19);
-            const confPct = Math.round((det.confidence || 0.95) * 100);
-            setEventLog(prev => [
-              {
-                time: now,
-                text: `AERIS Vision AI: ${det.display_name} (${confPct}% Conf) • CAM-01`,
-                color: det.class === 'person' ? 'green' : 'amber'
-              },
-              ...prev.slice(0, 40)
-            ]);
-          }
-        } catch (e) {
-          console.debug("WS parse:", e);
+    let pollTimer = null;
+
+    const fetchInitialTelemetry = async () => {
+      try {
+        const res = await fetch(`${backendUrl}/api/telemetry/current`);
+        if (res.ok) {
+          const telem = await res.json();
+          setMissionState(prev => ({
+            ...prev,
+            ...telem
+          }));
         }
-      };
-    } catch (e) {
-      console.debug("WS connection:", e);
-    }
+      } catch (err) {
+        console.debug("Initial telemetry standby:", err);
+      }
+    };
+
+    const connectWS = () => {
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log("Telemetry WebSocket connected to AERIS Backend");
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'init') {
+              if (msg.telemetry) {
+                setMissionState(prev => ({ ...prev, ...msg.telemetry }));
+              }
+            } else if (msg.type === 'telemetry') {
+              setMissionState(prev => ({
+                ...prev,
+                ...msg.data
+              }));
+            } else if (msg.type === 'detection') {
+              const det = msg.data;
+              const now = new Date().toISOString().substring(11, 19);
+              const confPct = Math.round((det.confidence || 0.95) * 100);
+              setEventLog(prev => [
+                {
+                  time: now,
+                  text: `AERIS Vision AI: ${det.display_name} (${confPct}% Conf) • CAM-01`,
+                  color: det.class === 'person' ? 'green' : 'amber'
+                },
+                ...prev.slice(0, 40)
+              ]);
+            }
+          } catch (e) {
+            console.debug("WS parse:", e);
+          }
+        };
+
+        ws.onerror = () => {
+          if (!pollTimer) pollTimer = setInterval(fetchInitialTelemetry, 2500);
+        };
+
+        ws.onclose = () => {
+          if (!pollTimer) pollTimer = setInterval(fetchInitialTelemetry, 2500);
+        };
+      } catch (e) {
+        pollTimer = setInterval(fetchInitialTelemetry, 2500);
+      }
+    };
+
+    fetchInitialTelemetry();
+    connectWS();
 
     return () => {
       if (ws) ws.close();
+      if (pollTimer) clearInterval(pollTimer);
     };
-  }, [wsUrl]);
+  }, [backendUrl, wsUrl]);
 
-  // Automated Backtracking Recovery Demo Engine
+  // 2. Automated Backtracking Recovery Demo Engine
   useEffect(() => {
     let timer;
     if (isPlayingAutoDemo) {
@@ -94,10 +138,21 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [isPlayingAutoDemo, simulationMode]);
 
-  const handleSelectZone = (zoneId) => {
+  // 3. Zone Selection
+  const handleSelectZone = async (zoneId) => {
     setSelectedZoneId(zoneId);
     const zone = DISASTER_ZONES.find(z => z.id === zoneId) || DISASTER_ZONES[0];
     const now = new Date().toISOString().substring(11, 19);
+
+    try {
+      await fetch(`${backendUrl}/api/telemetry/zone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zone_id: zoneId })
+      });
+    } catch (e) {
+      console.debug("Backend zone sync:", e);
+    }
 
     setMissionState(prev => ({
       ...prev,
@@ -118,9 +173,20 @@ export default function App() {
     ]);
   };
 
-  const handleSetSimulationMode = (mode) => {
+  // 4. Failover & Backtracking Simulation Mode
+  const handleSetSimulationMode = async (mode) => {
     setSimulationMode(mode);
     const now = new Date().toISOString().substring(11, 19);
+
+    try {
+      await fetch(`${backendUrl}/api/telemetry/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+    } catch (e) {
+      console.debug("Backend mode sync:", e);
+    }
 
     if (mode === 'SIGNAL_LOSS') {
       setMissionState(prev => ({
@@ -174,8 +240,20 @@ export default function App() {
     }
   };
 
-  const handleActionTrigger = (action) => {
+  // 5. Operator Command Triggers
+  const handleActionTrigger = async (action) => {
     const now = new Date().toISOString().substring(11, 19);
+
+    try {
+      await fetch(`${backendUrl}/api/mission/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+    } catch (e) {
+      console.debug("Backend action sync:", e);
+    }
+
     if (action === 'PAUSE_MISSION') {
       setEventLog(prev => [{ time: now, text: `Mission Paused • Loitering at ${activeZone.altitude}m AGL`, color: "amber" }, ...prev]);
     } else if (action === 'RESUME_MISSION') {
@@ -189,8 +267,8 @@ export default function App() {
     }
   };
 
-  const isOffline = simulationMode === 'SIGNAL_LOSS';
-  const isBacktracking = simulationMode === 'BACKTRACKING';
+  const isOffline = simulationMode === 'SIGNAL_LOSS' || missionState.connectionState === 'OFFLINE_MODE';
+  const isBacktracking = simulationMode === 'BACKTRACKING' || missionState.connectionState === 'BACKTRACKING';
 
   return (
     <div className="h-screen w-screen bg-[#070909] text-[#F2F4F3] flex flex-col overflow-hidden font-sans select-none">
@@ -282,7 +360,7 @@ export default function App() {
               checkpoints: { currentId: missionState.checkpoint, total: 4 },
               flightMode: missionState.flightMode,
               position: { altitudeAgl: missionState.altitude, groundSpeed: missionState.speed },
-              battery: { percentage: missionState.battery }
+              battery: { percentage: Math.round(missionState.battery) }
             }}
             isOfflineMode={isOffline || isBacktracking}
           />

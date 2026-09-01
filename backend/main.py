@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from camera_service import camera_service
 from detection_service import detection_service
+from telemetry_service import telemetry_service
 
 load_dotenv()
 
@@ -44,13 +45,18 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# Lifecycle context manager for graceful startup and shutdown
+# Lifecycle context manager for clean startup and shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Set the asyncio event loop for threadsafe WebSocket broadcasting
     manager.loop = asyncio.get_running_loop()
     
-    # Register callbacks from detection_service to WebSocket manager
+    # Start worker loops
+    camera_service.start()
+    detection_service.start()
+    telemetry_service.start()
+    
+    # Register callbacks from services to WebSocket manager
     detection_service.event_callback = lambda event: manager.broadcast_sync({
         "type": "detection",
         "data": event
@@ -59,21 +65,26 @@ async def lifespan(app: FastAPI):
         "type": "detections_update",
         "data": update
     })
+    telemetry_service.broadcast_callback = lambda telem: manager.broadcast_sync({
+        "type": "telemetry",
+        "data": telem
+    })
     
     yield
-    # Shutdown: clean release of threads and models
+    # Shutdown: clean release of threads, cameras, and models
+    telemetry_service.shutdown()
     detection_service.shutdown()
     camera_service.shutdown()
 
 app = FastAPI(
     title="AERIS Command Center Backend",
     description="Real-Time Telemetry, Live Video Stream & YOLO Object Detection API for AERIS-01 UAV",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan
 )
 
 # Configure CORS
-allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001")
 allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
 
 app.add_middleware(
@@ -84,8 +95,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Pydantic Request Models
 class CameraSelectRequest(BaseModel):
     camera_index: int
+
+class ZoneSelectRequest(BaseModel):
+    zone_id: str
+
+class ModeSelectRequest(BaseModel):
+    mode: str
+
+class MissionCommandRequest(BaseModel):
+    action: str
 
 
 # ==========================================
@@ -98,7 +119,8 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "aeris-backend",
-        "ai_engine": "ultralytics-yolo"
+        "ai_engine": "ultralytics-yolo",
+        "telemetry_engine": "active"
     }
 
 
@@ -106,6 +128,39 @@ async def health_check():
 async def ai_status():
     """Returns real-time YOLO AI model performance metrics and inference FPS."""
     return detection_service.get_status()
+
+
+# ==========================================
+# TELEMETRY & MISSION CONTROL ENDPOINTS
+# ==========================================
+
+@app.get("/api/telemetry/current")
+async def get_current_telemetry():
+    """Returns current real-time UAV flight telemetry and mission state."""
+    return telemetry_service.get_telemetry()
+
+
+@app.post("/api/telemetry/zone")
+async def select_disaster_zone(payload: ZoneSelectRequest):
+    """Switches active disaster search sector and aligns waypoints."""
+    result = telemetry_service.set_zone(payload.zone_id)
+    if not result:
+        raise HTTPException(status_code=400, detail="Invalid disaster zone ID")
+    return {"success": True, "telemetry": result}
+
+
+@app.post("/api/telemetry/mode")
+async def set_connection_mode(payload: ModeSelectRequest):
+    """Sets failover mode: NORMAL, SIGNAL_LOSS, BACKTRACKING, RECONNECTED."""
+    result = telemetry_service.set_connection_mode(payload.mode)
+    return {"success": True, "telemetry": result}
+
+
+@app.post("/api/mission/command")
+async def execute_mission_command(payload: MissionCommandRequest):
+    """Issues operator flight commands (PAUSE_MISSION, RESUME_MISSION, RETURN_TO_BASE, MARK_LOCATION)."""
+    result = telemetry_service.execute_command(payload.action)
+    return {"success": True, "action": payload.action, "telemetry": result}
 
 
 # ==========================================
@@ -185,17 +240,17 @@ async def detection_history():
 
 @app.websocket("/ws/live")
 async def websocket_live_endpoint(websocket: WebSocket):
-    """Unified WebSocket streaming detection events and live AI updates."""
+    """Unified WebSocket streaming telemetry, detection events, and live AI updates."""
     await manager.connect(websocket)
     try:
         # Send initial state immediately upon connection
         await websocket.send_text(json.dumps({
             "type": "init",
+            "telemetry": telemetry_service.get_telemetry(),
             "ai_status": detection_service.get_status(),
             "latest_detections": detection_service.get_latest_detections()
         }))
         while True:
-            # Keep-alive receive
             data = await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -207,4 +262,4 @@ if __name__ == "__main__":
     import uvicorn
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run(app, host=host, port=port)

@@ -93,13 +93,11 @@ class DetectionService:
         
         self.thread = None
         self._initialized = True
-        
-        # Load model and start inference worker
-        self._init_model()
-        self.start()
 
     def _init_model(self):
         """Loads Ultralytics YOLO model once and warms it up."""
+        if self.is_model_loaded and self.model is not None:
+            return
         try:
             import torch
             from ultralytics import YOLO
@@ -186,10 +184,9 @@ class DetectionService:
                 if cls_name not in ALLOWED_CLASSES or conf < self.confidence_threshold:
                     continue
                 
-                xyxy = box.xyxy[0].tolist() # [x1, y1, x2, y2]
+                xyxy = box.xyxy[0].tolist()
                 display_name = ALLOWED_CLASSES[cls_name]
                 
-                # Add to current frame detection list
                 detection_item = {
                     "class": cls_name,
                     "display_name": display_name,
@@ -211,7 +208,7 @@ class DetectionService:
                 should_emit = False
                 if not last_event or (now - last_event["time"] > self.cooldown_seconds):
                     should_emit = True
-                elif conf > (last_event["confidence"] + 0.15): # significant confidence jump
+                elif conf > (last_event["confidence"] + 0.15):
                     should_emit = True
                 
                 if should_emit:
@@ -226,11 +223,10 @@ class DetectionService:
                     self.event_history.append(event_payload)
                     self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
                     
-                    # Notify WebSocket handler if registered
                     if self.event_callback:
                         self.event_callback(event_payload)
 
-        # Encode annotated frame to JPEG for live detection video stream
+        # Encode annotated frame to JPEG
         ret, jpeg = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
         jpeg_bytes = jpeg.tobytes() if ret else None
 
@@ -247,7 +243,7 @@ class DetectionService:
             self.latest_annotated_jpeg = jpeg_bytes
             self.latest_detections = detection_payload
 
-        # Broadcast update to WebSocket clients
+        # Broadcast update
         if self.update_callback:
             self.update_callback(detection_payload)
 
@@ -263,15 +259,14 @@ class DetectionService:
                 time.sleep(0.5)
                 continue
             
-            # Read latest raw camera frame from shared camera service
             with camera_service.frame_lock:
                 frame = camera_service.latest_frame
                 is_cam_avail = camera_service.is_camera_available
             
             if frame is None or not is_cam_avail:
-                # If camera is unavailable, create clean standby annotated frame
-                standby_jpeg = camera_service._create_standby_frame("● AERIS VISION AI STANDBY")
+                standby_frame, standby_jpeg = camera_service._create_standby_frame("● AERIS VISION AI STANDBY")
                 with self.data_lock:
+                    self.latest_annotated_frame = standby_frame
                     self.latest_annotated_jpeg = standby_jpeg
                     self.latest_detections = {
                         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -280,7 +275,7 @@ class DetectionService:
                         "inference_fps": 0.0,
                         "inference_time_ms": 0.0
                     }
-                time.sleep(0.1)
+                time.sleep(0.04)
                 continue
 
             try:
@@ -299,7 +294,6 @@ class DetectionService:
                 dt = max(t1 - t0, 0.001)
                 current_fps = 1.0 / dt
                 
-                # Smooth FPS calculation
                 if self.inference_fps == 0.0:
                     self.inference_fps = current_fps
                 else:
@@ -308,18 +302,17 @@ class DetectionService:
                 self.inference_time_ms = dt * 1000.0
                 self.total_frames_processed += 1
                 
-                # Post-process and generate annotated outputs
                 self._process_detections(frame, results)
             except Exception as e:
                 logger.error(f"Inference error: {e}")
                 time.sleep(0.1)
 
-            # Cap loop pacing to avoid CPU saturation
             time.sleep(0.01)
 
     def start(self):
-        """Starts the background inference thread."""
+        """Initializes model and starts background inference thread."""
         if not self.is_running:
+            self._init_model()
             self.is_running = True
             self.thread = threading.Thread(target=self._inference_loop, daemon=True)
             self.thread.start()
@@ -358,7 +351,7 @@ class DetectionService:
                     b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n'
                 )
-            time.sleep(0.033) # ~30 FPS stream
+            time.sleep(0.033)
 
     def shutdown(self):
         """Releases resources and stops inference thread."""
