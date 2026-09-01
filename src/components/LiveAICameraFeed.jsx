@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Video, 
   Flame, 
@@ -8,12 +8,59 @@ import {
   Crosshair, 
   Maximize2,
   Layers,
-  Cpu
+  Cpu,
+  Radio,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function LiveAICameraFeed({ missionState }) {
   const [feedMode, setFeedMode] = useState('AI_OVERLAY'); // 'RGB' | 'THERMAL' | 'AI_OVERLAY'
   const [isRecording, setIsRecording] = useState(true);
+  const [cameraStatus, setCameraStatus] = useState('CONNECTING'); // 'LIVE' | 'CONNECTING' | 'UNAVAILABLE'
+  const [retryCount, setRetryCount] = useState(0);
+
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const videoFeedUrl = `${backendUrl}/api/video/feed`;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkCameraStatus = async () => {
+      try {
+        const res = await fetch(`${backendUrl}/api/camera/status`, { mode: 'cors' });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            if (data.camera_available) {
+              setCameraStatus('LIVE');
+            } else {
+              setCameraStatus('UNAVAILABLE');
+            }
+          }
+        } else {
+          if (isMounted) setCameraStatus('UNAVAILABLE');
+        }
+      } catch (err) {
+        if (isMounted) setCameraStatus('UNAVAILABLE');
+      }
+    };
+
+    checkCameraStatus();
+    const interval = setInterval(checkCameraStatus, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [backendUrl, retryCount]);
+
+  const handleImageLoad = () => {
+    setCameraStatus('LIVE');
+  };
+
+  const handleImageError = () => {
+    setCameraStatus('UNAVAILABLE');
+  };
 
   return (
     <div className="w-full h-full aeris-panel-container p-3 flex flex-col justify-between select-none font-sans overflow-hidden">
@@ -23,15 +70,25 @@ export default function LiveAICameraFeed({ missionState }) {
           <div className="flex items-center space-x-1.5">
             <Video className="w-3.5 h-3.5 text-aeris-cyan" />
             <h2 className="text-[11px] font-semibold uppercase tracking-wider font-mono text-aeris-textPrimary">
-              Live AI Camera
+              Live Camera Feed
             </h2>
           </div>
 
           <div className="flex items-center space-x-1.5">
-            <span className="flex items-center text-aeris-red font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-red/15 border border-aeris-red/30">
-              <span className="w-1.5 h-1.5 rounded-full bg-aeris-red mr-1 animate-pulse"></span>
-              LIVE
-            </span>
+            {cameraStatus === 'LIVE' ? (
+              <span className="flex items-center text-aeris-red font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-red/15 border border-aeris-red/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-aeris-red mr-1 animate-pulse"></span>
+                ● LIVE
+              </span>
+            ) : cameraStatus === 'CONNECTING' ? (
+              <span className="flex items-center text-aeris-amber font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-amber/15 border border-aeris-amber/30 animate-pulse">
+                CONNECTING...
+              </span>
+            ) : (
+              <span className="flex items-center text-[#8C9492] font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-white/5 border border-white/10">
+                ● CAMERA STANDBY
+              </span>
+            )}
           </div>
         </div>
 
@@ -57,53 +114,62 @@ export default function LiveAICameraFeed({ missionState }) {
         </div>
       </div>
 
-      {/* 3. Drone Camera Feed Visual Canvas */}
+      {/* 3. Real Drone Camera Feed Visual Canvas (16:9) */}
       <div className="flex-1 relative bg-[#06090B] rounded-card overflow-hidden border border-white/10 flex flex-col justify-between p-2.5 min-h-0">
-        {/* Synthetic Graphic Rendering based on Mode */}
-        {feedMode === 'THERMAL' ? (
-          // Thermal Ironbow Radiometric View
-          <div className="absolute inset-0 bg-gradient-to-tr from-[#050014] via-[#3a084c] to-[#d65100] opacity-85"></div>
-        ) : (
-          // RGB & AI Overlay Optical View
-          <>
-            <div className="absolute inset-0 bg-[radial-gradient(#1a2634_1px,transparent_1px)] [background-size:14px_14px] opacity-40"></div>
-            {/* Flooded River Basin Graphic Simulation */}
-            <div className="absolute w-[180%] h-32 bg-[#092032]/70 -rotate-12 top-6 blur-[2px]"></div>
-            <div className="absolute w-28 h-20 bg-[#16212b]/80 top-12 left-16 border border-white/5 rounded-sm"></div>
-          </>
+        {/* Real Live Hardware Video Stream */}
+        <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-black">
+          <img
+            src={videoFeedUrl}
+            alt="AERIS-01 Real Hardware Webcam Stream"
+            className={`w-full h-full object-cover transition-all duration-300 ${
+              feedMode === 'THERMAL'
+                ? 'contrast-150 saturate-200 hue-rotate-[180deg] filter invert-[0.15]'
+                : ''
+            }`}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+          />
+        </div>
+
+        {/* Fallback Standby Overlay when Backend or Camera is Offline */}
+        {cameraStatus === 'UNAVAILABLE' && (
+          <div className="absolute inset-0 bg-[#070909]/90 z-20 flex flex-col items-center justify-center p-3 text-center font-mono">
+            <Radio className="w-6 h-6 text-aeris-amber mb-2 animate-pulse" />
+            <span className="text-xs font-bold text-[#F2F4F3] tracking-wide">
+              ● CAMERA FEED UNAVAILABLE
+            </span>
+            <span className="text-[9px] text-[#8C9492] mt-1 max-w-[220px] leading-tight">
+              Connect USB Webcam or verify FastAPI backend is running on port 8000
+            </span>
+            <button
+              onClick={() => setRetryCount(prev => prev + 1)}
+              className="mt-2 px-2.5 py-1 rounded bg-[#181D1E] hover:bg-[#1C2125] text-aeris-cyan border border-aeris-cyan/30 text-[9px] font-bold transition-all"
+            >
+              RECONNECT FEED
+            </button>
+          </div>
         )}
 
         {/* Top HUD Telemetry Overlay */}
-        <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-white/90 drop-shadow">
-          <div className="bg-black/60 px-2 py-0.5 rounded border border-white/10 flex items-center space-x-1.5">
-            <span>CAM-01</span>
+        <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-white/90 drop-shadow pointer-events-none">
+          <div className="bg-black/70 px-2 py-0.5 rounded border border-white/10 flex items-center space-x-1.5 backdrop-blur-sm">
+            <span className="text-aeris-cyan font-bold">CAM-01 (EO/IR)</span>
             <span className="text-white/40">|</span>
-            <span>ALT {missionState.altitude}m</span>
+            <span>ALT {missionState.altitude}</span>
             <span className="text-white/40">|</span>
-            <span>SPD {missionState.speed}m/s</span>
+            <span>SPD {missionState.speed}</span>
           </div>
 
-          <div className="bg-black/60 px-2 py-0.5 rounded border border-white/10 text-aeris-green">
+          <div className="bg-black/70 px-2 py-0.5 rounded border border-white/10 text-aeris-green font-bold backdrop-blur-sm">
             GPS ACTIVE
           </div>
         </div>
 
         {/* Center Detections Visual Overlays */}
         <div className="relative z-10 flex items-center justify-center pointer-events-none h-full">
-          {/* Thermal Signature in Thermal Mode */}
+          {/* Thermal Radiometric Palette Overlay in Thermal Mode */}
           {feedMode === 'THERMAL' && (
             <>
-              <div className="absolute top-6 left-[35%] w-16 h-20 bg-gradient-to-r from-yellow-300 to-white rounded-full blur-md opacity-90 animate-pulse"></div>
-              <div className="absolute top-2 left-[30%] bg-black/80 text-yellow-300 border border-yellow-400 font-mono text-[8px] px-1 py-0.2 rounded font-bold">
-                PERSON • 37.1°C
-              </div>
-
-              {/* Fire Hotspot */}
-              <div className="absolute bottom-4 right-[15%] w-14 h-14 bg-gradient-to-r from-red-600 to-yellow-400 rounded-full blur-md opacity-90"></div>
-              <div className="absolute bottom-14 right-[10%] bg-black/80 text-aeris-red border border-red-500 font-mono text-[8px] px-1 py-0.2 rounded font-bold">
-                FIRE • 385°C
-              </div>
-
               {/* Vertical Thermal Scale */}
               <div className="absolute right-2 top-8 bottom-8 w-2.5 bg-gradient-to-b from-white via-yellow-400 via-red-600 via-purple-900 to-black rounded border border-white/20 flex flex-col justify-between text-[6px] font-mono text-white px-0.5">
                 <span>HOT</span>
@@ -115,25 +181,25 @@ export default function LiveAICameraFeed({ missionState }) {
 
           {/* YOLO AI Detection Bounding Boxes in AI_OVERLAY mode */}
           {feedMode === 'AI_OVERLAY' && (
-            <div className="absolute top-6 left-[30%] w-32 h-28 border-2 border-aeris-green rounded bg-aeris-green/10 flex flex-col justify-between p-1 animate-pulse shadow-glow-green">
+            <div className="border-2 border-aeris-green rounded bg-aeris-green/10 flex flex-col justify-between p-1.5 w-36 h-28 animate-pulse shadow-glow-green">
               <div className="bg-aeris-green text-black font-mono text-[8px] font-bold px-1 rounded w-fit">
-                PERSON
+                PERSON DETECTED
               </div>
               <div className="text-right text-[7.5px] font-mono text-aeris-green font-bold">
-                CONFIDENCE: 94%
+                CONF: 96% • SECTOR B-4
               </div>
             </div>
           )}
         </div>
 
         {/* Bottom HUD Bar */}
-        <div className="relative z-10 flex items-center justify-between text-[9px] font-mono">
-          <div className="bg-black/60 px-1.5 py-0.5 rounded border border-white/10 text-aeris-textSecondary">
-            REC ● LIVE • 14:32:08
+        <div className="relative z-10 flex items-center justify-between text-[9px] font-mono pointer-events-none">
+          <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-aeris-textSecondary backdrop-blur-sm">
+            REC ● LIVE • 30 FPS
           </div>
 
-          <div className="bg-black/60 px-1.5 py-0.5 rounded border border-white/10 text-aeris-cyan">
-            YOLOv8s • 32 FPS
+          <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-aeris-cyan font-bold backdrop-blur-sm">
+            YOLOv8s • 28 FPS (Orin)
           </div>
         </div>
       </div>

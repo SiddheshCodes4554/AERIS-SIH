@@ -17,7 +17,7 @@ import {
   Wifi
 } from 'lucide-react';
 
-// 1. Drone Marker Generator for Fleet Assets (A-07, A-12, A-03)
+// 1. Drone Marker Generator for Fleet Assets
 const createAssetDroneMarker = (callsign, isSelected) => {
   const color = isSelected ? '#3B9EFF' : '#63C174';
   const pulseColor = isSelected ? 'rgba(59, 158, 255, 0.4)' : 'rgba(99, 193, 116, 0.3)';
@@ -45,7 +45,7 @@ const createAssetDroneMarker = (callsign, isSelected) => {
   });
 };
 
-// 2. Incident Location Marker (Prominent Fire / Threat marker with pulsing outer ring)
+// 2. Incident Location Marker
 const createIncidentCenterMarker = (incident) => {
   const isFire = incident.category === 'FIRE';
   const color = incident.severityColor || '#FF4D3D';
@@ -82,8 +82,10 @@ export default function IncidentMap({
 }) {
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showRoutes, setShowRoutes] = useState(true);
-  const [cameraMode, setCameraMode] = useState('RGB'); // RGB | THERMAL | AI
+  const [isCameraError, setIsCameraError] = useState(false);
 
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const videoFeedUrl = `${backendUrl}/api/video/feed`;
   const centerPos = [incident.lat, incident.lng];
 
   return (
@@ -179,10 +181,9 @@ export default function IncidentMap({
             </Tooltip>
           </Circle>
 
-          {/* 5. Drone Flight Paths (Solid White for completed, Blue for mission, Dashed for recommended) */}
+          {/* 5. Drone Flight Paths */}
           {showRoutes && incident.droneRoute && (
             <>
-              {/* Solid White Line: Completed flight path */}
               <Polyline
                 positions={[
                   incident.droneRoute.launchPoint,
@@ -195,7 +196,6 @@ export default function IncidentMap({
                 }}
               />
 
-              {/* Blue Line: Current mission route to incident */}
               <Polyline
                 positions={[
                   incident.droneRoute.dronePos,
@@ -208,7 +208,6 @@ export default function IncidentMap({
                 }}
               />
 
-              {/* Dashed Line: Recommended patrol perimeter path */}
               <Polyline
                 positions={incident.droneRoute.recommendedPath}
                 pathOptions={{
@@ -242,7 +241,7 @@ export default function IncidentMap({
             </Popup>
           </Marker>
 
-          {/* 7. Nearby Asset Drone Markers (A-07, A-12, A-03) */}
+          {/* 7. Nearby Asset Drone Markers */}
           {nearbyDrones.map((drone) => (
             <Marker
               key={drone.id}
@@ -275,28 +274,27 @@ export default function IncidentMap({
             </div>
           </div>
 
-          {/* Simulated 16:9 Realistic Aerial Drone Video Canvas */}
+          {/* 16:9 Aerial Drone Real Video Canvas */}
           <div className="relative aspect-video bg-[#07090B] overflow-hidden flex flex-col justify-between p-2">
-            {/* Dynamic Environment Visuals based on incident category */}
-            {incident.category === 'FIRE' ? (
-              <>
-                {/* Forest Canopy Background */}
-                <div className="absolute inset-0 bg-gradient-to-b from-[#1b2615] via-[#2d1b0a] to-[#120a05]"></div>
-                {/* Smoke Plume Gradient */}
-                <div className="absolute top-0 right-4 w-32 h-24 bg-white/20 blur-xl rounded-full animate-pulse"></div>
-                {/* Fire Hotspot */}
-                <div className="absolute bottom-2 left-10 w-16 h-12 bg-gradient-to-r from-red-600 via-orange-500 to-yellow-300 rounded-full blur-md opacity-90 animate-pulse"></div>
-              </>
-            ) : (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-br from-[#121B24] to-[#0A1016]"></div>
-                <div className="absolute top-4 left-6 w-20 h-14 bg-black/40 border border-white/10 rounded"></div>
-              </>
-            )}
+            <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-black">
+              {!isCameraError ? (
+                <img
+                  src={videoFeedUrl}
+                  alt="AERIS-01 Hardware Camera Stream"
+                  className="w-full h-full object-cover"
+                  onError={() => setIsCameraError(true)}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-2 text-center font-mono">
+                  <Radio className="w-4 h-4 text-[#F5A623] mb-1 animate-pulse" />
+                  <span className="text-[8.5px] font-bold text-[#F2F4F3]">● STANDBY</span>
+                </div>
+              )}
+            </div>
 
             {/* AI Bounding Box Overlay */}
             <div className="relative z-10 flex items-center justify-center h-full pointer-events-none">
-              <div className="border-2 border-[#FF4D3D] rounded bg-[#FF4D3D]/10 p-1 flex flex-col justify-between w-28 h-16 animate-pulse">
+              <div className="border-2 border-[#FF4D3D] rounded bg-[#FF4D3D]/10 p-1 flex flex-col justify-between w-28 h-16 animate-pulse shadow-[0_0_8px_rgba(255,77,61,0.5)]">
                 <span className="text-[7.5px] font-mono bg-[#FF4D3D] text-white font-bold px-1 rounded w-fit">
                   {incident.cameraFeed.targetBox.label}
                 </span>
@@ -306,8 +304,8 @@ export default function IncidentMap({
               </div>
             </div>
 
-            {/* Bottom Overlay Telemetry: ALT 120m | SPD 8.4 m/s | BAT 74% */}
-            <div className="relative z-10 flex items-center justify-between text-[8px] font-mono bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-[#E8ECEF]">
+            {/* Bottom Overlay Telemetry */}
+            <div className="relative z-10 flex items-center justify-between text-[8px] font-mono bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-[#E8ECEF] pointer-events-none">
               <span>ALT {incident.cameraFeed.alt}</span>
               <span className="text-white/40">|</span>
               <span>SPD {incident.cameraFeed.speed}</span>
@@ -317,7 +315,7 @@ export default function IncidentMap({
           </div>
         </div>
 
-        {/* 9. Minimal Heat Map Legend (Bottom-Right) */}
+        {/* 9. Minimal Heat Map Legend */}
         {showHeatmap && (
           <div className="absolute bottom-3 right-3 z-[1000] bg-[#111516]/95 border border-white/10 p-2 rounded-xl backdrop-blur-md font-mono text-[9px] shadow-lg pointer-events-auto space-y-1">
             <div className="text-[#8B949E] font-bold uppercase tracking-wider text-[8px] border-b border-white/5 pb-0.5">

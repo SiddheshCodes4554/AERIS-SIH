@@ -1,7 +1,12 @@
-import React from 'react';
-import { Video, Maximize2, Crosshair, Wifi, Disc } from 'lucide-react';
+import React, { useState } from 'react';
+import { Video, Maximize2, Crosshair, Wifi, Disc, Radio } from 'lucide-react';
 
 export default function LiveVisionIntelligence({ streams = [] }) {
+  const [isError, setIsError] = useState(false);
+
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const videoFeedUrl = `${backendUrl}/api/video/feed`;
+
   return (
     <div className="w-full bg-[#15191C] border border-white/5 rounded-2xl p-3.5 select-none font-sans shadow-xl">
       {/* Header */}
@@ -13,13 +18,13 @@ export default function LiveVisionIntelligence({ streams = [] }) {
           </h3>
         </div>
         <span className="text-[10px] font-mono text-[#8B949E]">
-          3 ACTIVE EO/IR CAMERAS
+          3 ACTIVE EO/IR CAMERAS (AERIS-01 PAYLOAD)
         </span>
       </div>
 
       {/* 3 Camera Feed Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-        {streams.map((stream) => (
+        {streams.map((stream, idx) => (
           <div
             key={stream.id}
             className="bg-[#181D20] border border-white/5 rounded-xl overflow-hidden flex flex-col justify-between group hover:border-white/15 transition-all shadow-lg"
@@ -37,37 +42,44 @@ export default function LiveVisionIntelligence({ streams = [] }) {
               <span className="text-[#8B949E]">{stream.cameraLabel}</span>
             </div>
 
-            {/* Simulated Drone Aerial Canvas (16:9) */}
+            {/* Drone Aerial Video Canvas (16:9) */}
             <div className="relative aspect-video bg-[#07090B] overflow-hidden flex flex-col justify-between p-2">
-              {/* Dynamic Synthetic Visual Backdrop */}
-              {stream.streamType === 'THERMAL_FIRE' ? (
-                // Thermal False-Color
-                <div className="absolute inset-0 bg-gradient-to-tr from-[#050014] via-[#3a084c] to-[#d65100] opacity-85"></div>
-              ) : stream.streamType === 'RIVER_SURGE' ? (
-                // River Surge Flow
-                <div className="absolute inset-0 bg-gradient-to-br from-[#092032] to-[#040C12]">
-                  <div className="absolute w-[180%] h-24 bg-[#103b5c]/50 -rotate-12 top-4 blur-[2px]"></div>
-                </div>
-              ) : (
-                // Urban / Crowd Sector
-                <div className="absolute inset-0 bg-gradient-to-br from-[#121B24] to-[#0A1016]">
-                  <div className="absolute top-4 left-6 w-24 h-16 bg-black/40 border border-white/5 rounded"></div>
-                </div>
-              )}
+              {/* Real Live Hardware Video Stream for Primary or Synced Visuals */}
+              <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-black">
+                {!isError ? (
+                  <img
+                    src={videoFeedUrl}
+                    alt="AERIS-01 Hardware Camera Stream"
+                    className={`w-full h-full object-cover ${
+                      stream.streamType === 'THERMAL_FIRE'
+                        ? 'contrast-150 saturate-200 hue-rotate-[180deg] filter invert-[0.15]'
+                        : idx === 1
+                          ? 'hue-rotate-15 contrast-125'
+                          : ''
+                    }`}
+                    onError={() => setIsError(true)}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-2 text-center font-mono">
+                    <Radio className="w-4 h-4 text-[#F5A623] mb-1 animate-pulse" />
+                    <span className="text-[8.5px] font-bold text-[#F2F4F3]">● CAMERA STANDBY</span>
+                  </div>
+                )}
+              </div>
 
               {/* Minimal Top Telemetry: Timestamp & Alt/Spd */}
-              <div className="relative z-10 flex items-center justify-between text-[8px] font-mono text-white/90 drop-shadow">
-                <div className="bg-black/60 px-1.5 py-0.5 rounded border border-white/10">
+              <div className="relative z-10 flex items-center justify-between text-[8px] font-mono text-white/90 drop-shadow pointer-events-none">
+                <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10">
                   {stream.timestamp}
                 </div>
-                <div className="bg-black/60 px-1.5 py-0.5 rounded border border-white/10 text-[#63C174]">
+                <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-[#63C174]">
                   ALT {stream.alt} • {stream.spd}
                 </div>
               </div>
 
               {/* Center YOLO AI Detection Bounding Boxes */}
               <div className="relative z-10 flex items-center justify-center h-full pointer-events-none">
-                <div className="border-2 border-[#63C174] rounded bg-[#63C174]/10 p-1 flex flex-col justify-between w-28 h-14 animate-pulse">
+                <div className="border-2 border-[#63C174] rounded bg-[#63C174]/10 p-1 flex flex-col justify-between w-28 h-14 animate-pulse shadow-[0_0_8px_rgba(99,193,116,0.5)]">
                   <span className="text-[7px] font-mono bg-[#63C174] text-black font-bold px-1 rounded w-fit">
                     {stream.primaryDetection.label}
                   </span>
@@ -78,7 +90,7 @@ export default function LiveVisionIntelligence({ streams = [] }) {
               </div>
 
               {/* Minimal Bottom GPS Coordinates */}
-              <div className="relative z-10 flex items-center justify-between text-[8px] font-mono bg-black/60 px-1.5 py-0.5 rounded border border-white/10 text-[#A0AAB0]">
+              <div className="relative z-10 flex items-center justify-between text-[8px] font-mono bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-[#A0AAB0] pointer-events-none">
                 <span>{stream.coords}</span>
                 <span className="text-[#3B9EFF]">{stream.fps} FPS</span>
               </div>
