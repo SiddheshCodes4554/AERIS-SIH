@@ -247,7 +247,7 @@ export default function LiveDisasterMap({
         </div>
       </div>
 
-      {/* 2. Main Leaflet Satellite Map Canvas (Fills entire container) */}
+      {/* 2. Main Leaflet Satellite Map Canvas */}
       <div className="flex-1 w-full h-full relative min-h-0">
         <MapContainer
           center={dronePos}
@@ -264,7 +264,7 @@ export default function LiveDisasterMap({
             maxZoom={18}
           />
 
-          {/* 3. Real Live Disaster Heat Map Layer (Directly on Satellite Map) */}
+          {/* 3. Real Live Disaster Heat Map Layer */}
           {activeLayers.heatmap && heatmapZones.map((zone) => (
             <Circle
               key={zone.id}
@@ -284,10 +284,9 @@ export default function LiveDisasterMap({
             </Circle>
           ))}
 
-          {/* 4. Normal Mission Flight Path (Thin Blue / Green line) */}
+          {/* 4. Normal Mission Flight Path */}
           {activeLayers.route && (
             <>
-              {/* Completed route */}
               <Polyline
                 positions={flightRoutes.completedPath}
                 pathOptions={{
@@ -298,7 +297,6 @@ export default function LiveDisasterMap({
                 }}
               />
 
-              {/* Upcoming planned route (Muted white when normal, fully muted when offline) */}
               {!isOfflineMode && (
                 <Polyline
                   positions={flightRoutes.upcomingPath}
@@ -311,7 +309,6 @@ export default function LiveDisasterMap({
                 />
               )}
 
-              {/* AUTONOMOUS BACKTRACKING PATH (Dashed Amber Line when Signal Lost) */}
               {isOfflineMode && (
                 <Polyline
                   positions={flightRoutes.backtrackPath}
@@ -338,14 +335,14 @@ export default function LiveDisasterMap({
               icon={createCheckpointIcon(cp)}
             >
               <Popup>
-                <div className="font-mono text-xs p-1">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
+                <div className="font-sans text-xs p-1 text-[#F2F4F3]">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
                     <span className="font-bold text-aeris-textPrimary">{cp.label}: {cp.name}</span>
-                    <span className="text-aeris-green text-[10px]">{cp.status}</span>
+                    <span className="text-aeris-green text-[10px] font-mono font-semibold px-1 rounded bg-aeris-green/10">{cp.status}</span>
                   </div>
-                  <p className="text-aeris-textSecondary text-[11px]">Alt Target: {cp.altitudeMeters}m AGL</p>
+                  <p className="text-[#A0AAB0] text-[11px] font-mono">Alt Target: <strong className="text-[#F2F4F3]">{cp.altitudeMeters}m AGL</strong></p>
                   {cp.isLastConnected && (
-                    <p className="text-aeris-green font-bold text-[10px] mt-1">
+                    <p className="text-aeris-green font-bold text-[10.5px] mt-1 font-mono">
                       📶 LAST CONNECTED LINK ({cp.commQuality})
                     </p>
                   )}
@@ -354,7 +351,7 @@ export default function LiveDisasterMap({
             </Marker>
           ))}
 
-          {/* 6. Survivor Detection Markers (Yellow Person Icon) */}
+          {/* 6. Survivor Detection Markers (High Contrast Dark Popup) */}
           {activeLayers.survivors && survivors.map((surv) => (
             <Marker
               key={surv.id}
@@ -362,26 +359,40 @@ export default function LiveDisasterMap({
               icon={createSurvivorMarker(surv)}
             >
               <Popup>
-                <div className="font-mono text-xs p-1 max-w-[220px]">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
-                    <span className="font-bold text-aeris-amber">SURVIVOR DETECTED</span>
-                    <span className="bg-aeris-red/20 text-aeris-red text-[9.5px] px-1 rounded font-bold">
+                <div className="font-sans text-xs p-1 max-w-[240px] text-[#F2F4F3]">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
+                    <span className="font-bold text-aeris-amber text-[12px] font-mono">SURVIVOR DETECTED</span>
+                    <span className="bg-aeris-red/25 text-aeris-red text-[9.5px] font-mono px-1.5 py-0.2 rounded font-bold border border-aeris-red/40">
                       {surv.priority}
                     </span>
                   </div>
-                  <div className="space-y-1 text-[11px] my-1 text-aeris-textSecondary font-sans">
-                    <p><strong className="text-aeris-textPrimary">Sector:</strong> {surv.sector}</p>
-                    <p><strong className="text-aeris-textPrimary">Confidence:</strong> <span className="text-aeris-green font-mono">{surv.confidence}%</span></p>
-                    <p><strong className="text-aeris-textPrimary">Sensor Source:</strong> <span className="text-aeris-cyan font-mono">{surv.source}</span></p>
-                    <p><strong className="text-aeris-textPrimary">Timestamp:</strong> {surv.time}</p>
-                    <p className="text-[10.5px] text-aeris-textMuted pt-1">{surv.details}</p>
+                  <div className="space-y-1 text-[11px] my-1 font-sans">
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Sector:</span>
+                      <strong className="text-[#F2F4F3] font-mono">{surv.sector}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Confidence:</span>
+                      <strong className="text-aeris-green font-mono font-bold">{surv.confidence}%</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Sensor Source:</span>
+                      <strong className="text-aeris-cyan font-mono">{surv.source}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Timestamp:</span>
+                      <strong className="text-[#F2F4F3] font-mono">{surv.time}</strong>
+                    </p>
+                    <p className="text-[11px] text-[#A0AAB0] pt-1.5 border-t border-white/10 leading-relaxed font-light">
+                      {surv.details}
+                    </p>
                   </div>
                 </div>
               </Popup>
             </Marker>
           ))}
 
-          {/* 7. Hazard Markers (Fire, Flood, Collapsed Structure) */}
+          {/* 7. Hazard Markers (High Contrast Dark Popup) */}
           {activeLayers.hazards && hazards.map((haz) => (
             <Marker
               key={haz.id}
@@ -389,16 +400,29 @@ export default function LiveDisasterMap({
               icon={createHazardMarker(haz)}
             >
               <Popup>
-                <div className="font-mono text-xs p-1 max-w-[220px]">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
-                    <span className="font-bold text-aeris-red">{haz.label}</span>
-                    <span className="text-[10px] text-aeris-amber">{haz.priority}</span>
+                <div className="font-sans text-xs p-1 max-w-[240px] text-[#F2F4F3]">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
+                    <span className="font-bold text-aeris-red text-[12px] font-mono">{haz.label}</span>
+                    <span className="text-[9.5px] font-mono text-aeris-amber font-bold px-1.5 py-0.2 rounded bg-aeris-amber/20 border border-aeris-amber/30">
+                      {haz.priority}
+                    </span>
                   </div>
-                  <div className="space-y-1 text-[11px] my-1 text-aeris-textSecondary font-sans">
-                    <p><strong className="text-aeris-textPrimary">Sector:</strong> {haz.sector}</p>
-                    <p><strong className="text-aeris-textPrimary">Confidence:</strong> <span className="text-aeris-green font-mono">{haz.confidence}%</span></p>
-                    <p><strong className="text-aeris-textPrimary">Sensor:</strong> <span className="text-aeris-cyan font-mono">{haz.source}</span></p>
-                    <p className="text-[10.5px] text-aeris-textMuted pt-1">{haz.details}</p>
+                  <div className="space-y-1 text-[11px] my-1 font-sans">
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Sector:</span>
+                      <strong className="text-[#F2F4F3] font-mono">{haz.sector}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Confidence:</span>
+                      <strong className="text-aeris-green font-mono font-bold">{haz.confidence}%</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Sensor:</span>
+                      <strong className="text-aeris-cyan font-mono">{haz.source}</strong>
+                    </p>
+                    <p className="text-[11px] text-[#A0AAB0] pt-1.5 border-t border-white/10 leading-relaxed font-light">
+                      {haz.details}
+                    </p>
                   </div>
                 </div>
               </Popup>
@@ -411,10 +435,13 @@ export default function LiveDisasterMap({
             icon={createAeroDroneIcon(telemetry.position.heading, isOfflineMode)}
           >
             <Popup>
-              <div className="font-mono text-xs p-1">
-                <span className="font-bold text-aeris-cyan">{telemetry.droneId} ({telemetry.callsign})</span>
-                <p className="text-aeris-textSecondary text-[11px]">Alt: {telemetry.position.altitudeAgl}m • Spd: {telemetry.position.groundSpeed} m/s</p>
-                <p className="text-aeris-textMuted text-[10px]">State: {isOfflineMode ? 'OFFLINE BACKTRACK' : 'NORMAL FLIGHT'}</p>
+              <div className="font-sans text-xs p-1 text-[#F2F4F3]">
+                <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
+                  <span className="font-bold text-aeris-cyan font-mono">{telemetry.droneId} ({telemetry.callsign})</span>
+                  <span className="text-aeris-green text-[9.5px] font-mono">{telemetry.flightMode}</span>
+                </div>
+                <p className="text-[#A0AAB0] text-[11px] font-mono">Alt: <strong className="text-[#F2F4F3]">{telemetry.position.altitudeAgl}m</strong> • Spd: <strong className="text-[#F2F4F3]">{telemetry.position.groundSpeed} m/s</strong></p>
+                <p className="text-[#8C9492] text-[10px] font-mono mt-0.5">State: <strong className={isOfflineMode ? 'text-aeris-amber' : 'text-aeris-green'}>{isOfflineMode ? 'OFFLINE BACKTRACK' : 'NORMAL FLIGHT'}</strong></p>
               </div>
             </Popup>
           </Marker>

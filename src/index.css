@@ -20,7 +20,7 @@
   }
 }
 
-/* Aeris Panel Styling (90% dark neutral, crisp borders, 0 excess glass blur) */
+/* Aeris Panel Styling */
 .aeris-panel-container {
   background-color: #111516;
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -50,12 +50,70 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Leaflet Dark Popup & Tooltip Customization (Fixes white background text washout) */
+.leaflet-popup-content-wrapper {
+  background: #111516 !important;
+  color: #F2F4F3 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.75) !important;
+  padding: 2px !important;
+}
+
+.leaflet-popup-tip {
+  background: #111516 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px !important;
+  line-height: 1.4 !important;
+  color: #F2F4F3 !important;
+  font-family: 'Inter', -apple-system, sans-serif !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  color: #8C9492 !important;
+  padding: 6px 6px 0 0 !important;
+  font-size: 16px !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button:hover {
+  color: #F2F4F3 !important;
+}
+
+.leaflet-tooltip {
+  background: #111516 !important;
+  color: #F2F4F3 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6) !important;
+  padding: 4px 8px !important;
+  font-family: 'Inter', monospace, sans-serif !important;
+}
+
+.leaflet-tooltip-top:before {
+  border-top-color: #111516 !important;
+}
+
+.leaflet-tooltip-bottom:before {
+  border-bottom-color: #111516 !important;
+}
+
+.leaflet-tooltip-left:before {
+  border-left-color: #111516 !important;
+}
+
+.leaflet-tooltip-right:before {
+  border-right-color: #111516 !important;
 }
 
 /* Leaflet Satellite Map Dark Grading */
@@ -81,13 +139,4 @@
 
 .animate-ping-subtle {
   animation: ping-subtle 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-@keyframes radar-sweep {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.animate-radar {
-  animation: radar-sweep 4s linear infinite;
 }
