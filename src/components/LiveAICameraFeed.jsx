@@ -124,10 +124,14 @@ export default function LiveAICameraFeed({ missionState }) {
         mode: 'cors'
       });
       if (res.ok) {
+        const data = await res.json();
+        if (data.status && data.status.camera_available) {
+          setCameraStatus('LIVE');
+        }
+        setStreamKey(Date.now());
         setTimeout(() => {
-          setStreamKey(Date.now());
           setIsSwitching(false);
-        }, 400);
+        }, 300);
       }
     } catch (err) {
       console.error("Failed to switch camera:", err);
@@ -139,15 +143,21 @@ export default function LiveAICameraFeed({ missionState }) {
   const handleForceReconnect = async () => {
     setIsSwitching(true);
     try {
-      await fetch(`${backendUrl}/api/camera/reconnect`, {
+      const res = await fetch(`${backendUrl}/api/camera/reconnect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         mode: 'cors'
       });
-      setTimeout(() => {
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status && data.status.camera_available) {
+          setCameraStatus('LIVE');
+        }
         setStreamKey(Date.now());
-        setIsSwitching(false);
-      }, 300);
+        setTimeout(() => {
+          setIsSwitching(false);
+        }, 300);
+      }
     } catch (err) {
       console.error("Reconnect failed:", err);
       setIsSwitching(false);

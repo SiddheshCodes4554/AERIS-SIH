@@ -27,7 +27,8 @@ class CameraService:
         if self._initialized:
             return
         
-        self.camera_index = int(os.getenv("CAMERA_INDEX", "0"))
+        # Default to 1 (Phone Link) if available, otherwise 0
+        self.camera_index = int(os.getenv("CAMERA_INDEX", "1"))
         self.cap = None
         self.is_running = False
         self.is_camera_available = False
