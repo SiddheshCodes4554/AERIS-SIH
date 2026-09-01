@@ -13,7 +13,7 @@ load_dotenv()
 logger = logging.getLogger("aeris.detection")
 logging.basicConfig(level=logging.INFO)
 
-# Prioritized Rescue & Detection Classes
+# Prioritized Genuine Detection Classes
 ALLOWED_CLASSES = {
     "person": "PERSON DETECTED",
     "car": "VEHICLE DETECTED",
@@ -125,15 +125,15 @@ class DetectionService:
             self.is_model_loaded = False
 
     def _draw_tactical_box(self, img, box, cls_name, conf):
-        """Draws high-contrast cinematic tactical bounding box with corner brackets and label."""
+        """Draws high-contrast cinematic tactical bounding box with corner reticle brackets."""
         x1, y1, x2, y2 = [int(v) for v in box]
         color = CLASS_COLORS.get(cls_name, (98, 195, 112))
         
-        # 1. Main subtle bounding box outline
+        # 1. Subtle bounding box outline
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 1, cv2.LINE_AA)
         
-        # 2. Prominent corner reticle brackets (12px length)
-        corner_len = min(16, (x2 - x1) // 3, (y2 - y1) // 3)
+        # 2. Corner reticle brackets
+        corner_len = min(16, max(6, (x2 - x1) // 4), max(6, (y2 - y1) // 4))
         thick = 2
         # Top-Left
         cv2.line(img, (x1, y1), (x1 + corner_len, y1), color, thick)
@@ -148,7 +148,7 @@ class DetectionService:
         cv2.line(img, (x2, y2), (x2 - corner_len, y2), color, thick)
         cv2.line(img, (x2, y2), (x2, y2 - corner_len), color, thick)
         
-        # 3. Tactical Header Pill: e.g. "PERSON 96%"
+        # 3. Tactical Header Badge: e.g. "PERSON 96%"
         pct = int(conf * 100)
         label = f"{cls_name.upper()} {pct}%"
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -160,15 +160,15 @@ class DetectionService:
         pill_y2 = pill_y1 + h + 6
         pill_x2 = x1 + w + 10
         
-        # Draw dark badge background with colored border
+        # Background badge
         cv2.rectangle(img, (x1, pill_y1), (pill_x2, pill_y2), (11, 14, 15), -1)
         cv2.rectangle(img, (x1, pill_y1), (pill_x2, pill_y2), color, 1)
         
-        # Text
+        # Label text
         cv2.putText(img, label, (x1 + 5, pill_y2 - 4), font, font_scale, color, font_thick, cv2.LINE_AA)
 
-    def _process_detections(self, frame, results, sim_targets=None):
-        """Extracts filtered detection objects, applies stability/debouncing, and annotates frame."""
+    def _process_detections(self, frame, results):
+        """Extracts genuine YOLO detections from the real camera frame."""
         annotated_frame = frame.copy()
         current_detections = []
         now = time.time()
@@ -200,49 +200,31 @@ class DetectionService:
                 }
                 current_detections.append(detection_item)
                 
-                # Draw box on annotated frame
+                # Draw tactical box on annotated frame
                 self._draw_tactical_box(annotated_frame, xyxy, cls_name, conf)
-
-        # Merge simulation targets if active and YOLO model hasn't already found identical items
-        if sim_targets:
-            for st in sim_targets:
-                cls_name = st["class"]
-                conf = st["confidence"]
-                bbox = st["bounding_box"]
-                xyxy = [bbox["x1"], bbox["y1"], bbox["x2"], bbox["y2"]]
                 
-                # Check if we already have this class in current_detections
-                if not any(d["class"] == cls_name for d in current_detections):
-                    current_detections.append(st)
-                    self._draw_tactical_box(annotated_frame, xyxy, cls_name, conf)
-
-        # Emit events for new or upgraded detections
-        for det in current_detections:
-            cls_name = det["class"]
-            conf = det["confidence"]
-            display_name = det["display_name"]
-            
-            last_event = self.event_cooldowns.get(cls_name)
-            should_emit = False
-            if not last_event or (now - last_event["time"] > self.cooldown_seconds):
-                should_emit = True
-            elif conf > (last_event["confidence"] + 0.15):
-                should_emit = True
-            
-            if should_emit:
-                event_id = f"det_{int(now * 1000)}"
-                event_payload = {
-                    "event_id": event_id,
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                    "class": cls_name,
-                    "display_name": display_name,
-                    "confidence": round(conf, 2)
-                }
-                self.event_history.append(event_payload)
-                self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
+                # Temporal debouncing for event emission
+                last_event = self.event_cooldowns.get(cls_name)
+                should_emit = False
+                if not last_event or (now - last_event["time"] > self.cooldown_seconds):
+                    should_emit = True
+                elif conf > (last_event["confidence"] + 0.15):
+                    should_emit = True
                 
-                if self.event_callback:
-                    self.event_callback(event_payload)
+                if should_emit:
+                    event_id = f"det_{int(now * 1000)}"
+                    event_payload = {
+                        "event_id": event_id,
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "class": cls_name,
+                        "display_name": display_name,
+                        "confidence": round(conf, 2)
+                    }
+                    self.event_history.append(event_payload)
+                    self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
+                    
+                    if self.event_callback:
+                        self.event_callback(event_payload)
 
         # Encode annotated frame to JPEG
         ret, jpeg = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
@@ -261,14 +243,14 @@ class DetectionService:
             self.latest_annotated_jpeg = jpeg_bytes
             self.latest_detections = detection_payload
 
-        # Broadcast update
+        # Broadcast update to WebSocket
         if self.update_callback:
             self.update_callback(detection_payload)
 
     def _inference_loop(self):
-        """Continuous inference worker reading from shared camera service."""
+        """Continuous inference worker reading from shared real hardware camera."""
         from camera_service import camera_service
-        logger.info("YOLO inference loop started.")
+        logger.info("Real YOLO inference loop started.")
         
         fps_smoothing = 0.9
         
@@ -280,7 +262,6 @@ class DetectionService:
             with camera_service.frame_lock:
                 frame = camera_service.latest_frame
                 is_cam_avail = camera_service.is_camera_available
-                sim_targets = camera_service.latest_sim_targets
             
             if frame is None:
                 time.sleep(0.04)
@@ -289,7 +270,7 @@ class DetectionService:
             try:
                 t0 = time.time()
                 
-                # Single shared YOLO inference
+                # Single shared genuine YOLO inference
                 results = self.model.predict(
                     source=frame,
                     conf=self.confidence_threshold,
@@ -310,7 +291,7 @@ class DetectionService:
                 self.inference_time_ms = dt * 1000.0
                 self.total_frames_processed += 1
                 
-                self._process_detections(frame, results, sim_targets)
+                self._process_detections(frame, results)
             except Exception as e:
                 logger.error(f"Inference error: {e}")
                 time.sleep(0.1)
@@ -339,12 +320,12 @@ class DetectionService:
         }
 
     def get_latest_detections(self):
-        """Returns the latest detection results."""
+        """Returns the latest genuine detection results."""
         with self.data_lock:
             return self.latest_detections
 
     def get_event_history(self):
-        """Returns the recent detection events list."""
+        """Returns the debounced chronological history of confirmed events."""
         with self.data_lock:
             return list(self.event_history)
 
