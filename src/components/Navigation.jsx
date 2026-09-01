@@ -11,16 +11,21 @@ import {
   Radio,
   Sliders,
   MapPin,
-  Route,
-  RotateCcw
+  RotateCcw,
+  ChevronDown
 } from 'lucide-react';
+import { DISASTER_ZONES } from '../data/operationalAreas.js';
 
-export default function Navigation({ activeTab, onSelectTab }) {
+export default function Navigation({ 
+  activeTab, 
+  onSelectTab, 
+  selectedZoneId, 
+  onSelectZoneId 
+}) {
   const navItems = [
-    { id: 'planning', label: 'Mission Planning', icon: Route, badge: 'PLAN' },
+    { id: 'live-mission', label: 'Live Mission Command', icon: Compass },
     { id: 'offline-autonomy', label: 'Offline Autonomy', icon: RotateCcw, badge: 'RECOVERY' },
     { id: 'aeris01-operations', label: 'AERIS-01 Operations', icon: Sliders, badge: 'HEALTH' },
-    { id: 'live-mission', label: 'Live Mission Command', icon: Compass },
     { id: 'incidents', label: 'Incidents / Alerts', icon: ShieldAlert, badge: '3' },
     { id: 'intelligence', label: 'Mission Intelligence', icon: Sparkles, badge: 'AI' },
   ];
@@ -28,10 +33,10 @@ export default function Navigation({ activeTab, onSelectTab }) {
   return (
     <nav className="h-14 px-4 bg-[#0B0E0F] border-b border-aeris-border flex items-center justify-between select-none shrink-0 z-30 font-sans">
       {/* 1. Left: Brand Logo & Title */}
-      <div className="flex items-center space-x-5">
+      <div className="flex items-center space-x-4">
         <div 
           className="flex items-center space-x-2.5 cursor-pointer" 
-          onClick={() => onSelectTab('planning')}
+          onClick={() => onSelectTab('live-mission')}
         >
           <div className="w-8 h-8 rounded-lg bg-[#15191C] border border-white/10 flex items-center justify-center shadow-inner">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -54,7 +59,7 @@ export default function Navigation({ activeTab, onSelectTab }) {
           </div>
         </div>
 
-        {/* 2. Top Nav Items (Dedicated single drone UAV views) */}
+        {/* 2. Top Nav Items */}
         <div className="hidden md:flex items-center space-x-1 p-0.5 rounded-pill bg-[#15191C] border border-white/5 text-[11px] font-mono">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -75,13 +80,11 @@ export default function Navigation({ activeTab, onSelectTab }) {
                   <span className={`text-[8px] px-1.5 py-0.2 rounded-full font-bold ${
                     item.badge === 'RECOVERY'
                       ? 'bg-[#F5A623]/20 text-[#F5A623] border border-[#F5A623]/40'
-                      : item.badge === 'PLAN'
-                        ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
-                        : item.badge === 'HEALTH'
-                          ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
-                          : item.badge === 'AI' 
-                            ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
-                            : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
+                      : item.badge === 'HEALTH'
+                        ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
+                        : item.badge === 'AI' 
+                          ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
+                          : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
                   }`}>
                     {item.badge}
                   </span>
@@ -92,13 +95,32 @@ export default function Navigation({ activeTab, onSelectTab }) {
         </div>
       </div>
 
-      {/* 3. Right: System Status, Mesh Link & Profile */}
-      <div className="flex items-center space-x-3 text-xs font-mono">
-        {/* System Status */}
-        <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-pill bg-[#15191C] border border-white/5 text-[#E8ECEF]">
+      {/* 3. Center/Right: OPERATIONAL AREA / ROUTE SELECTOR (Controls entire app state) */}
+      <div className="flex items-center space-x-2.5 text-xs font-mono">
+        <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#15191C] border border-[#3B9EFF]/30 text-[#E8ECEF] shadow-sm">
+          <MapPin className="w-3.5 h-3.5 text-[#3B9EFF]" />
+          <div className="flex flex-col text-left">
+            <span className="text-[7.5px] uppercase tracking-wider text-[#8B949E] leading-none">
+              ACTIVE DISASTER ZONE
+            </span>
+            <select
+              value={selectedZoneId}
+              onChange={(e) => onSelectZoneId(e.target.value)}
+              className="bg-transparent text-[11px] font-bold text-[#3B9EFF] focus:outline-none cursor-pointer mt-0.5"
+            >
+              {DISASTER_ZONES.map((zone) => (
+                <option key={zone.id} value={zone.id} className="bg-[#111516] text-[#E8ECEF]">
+                  {zone.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* System Status: READY / NOMINAL */}
+        <div className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1 rounded-pill bg-[#15191C] border border-white/5 text-[#E8ECEF]">
           <span className="w-1.5 h-1.5 rounded-full bg-[#63C174] shadow-[0_0_8px_rgba(99,193,116,0.6)]"></span>
-          <span className="text-[10px] tracking-wider text-[#8B949E] hidden sm:inline">UAV-01:</span>
-          <span className="text-[10px] font-bold text-[#63C174]">● READY</span>
+          <span className="text-[10px] font-bold text-[#63C174]">● AUTONOMOUS</span>
         </div>
 
         {/* 5.8 GHz Mesh Ground Link */}
@@ -118,7 +140,7 @@ export default function Navigation({ activeTab, onSelectTab }) {
           <div className="w-7 h-7 rounded-full bg-[#1C2125] border border-white/10 flex items-center justify-center text-[#E8ECEF]">
             <User className="w-3.5 h-3.5 text-[#3B9EFF]" />
           </div>
-          <div className="hidden lg:flex flex-col text-left">
+          <div className="hidden xl:flex flex-col text-left">
             <span className="text-[10.5px] font-semibold text-[#E8ECEF] leading-tight">CMD. SIDDHESH</span>
             <span className="text-[8px] text-[#8B949E] leading-tight">AERIS-01 OP</span>
           </div>
