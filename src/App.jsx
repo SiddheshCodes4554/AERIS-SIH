@@ -42,7 +42,7 @@ export default function App() {
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://10.10.8.241:8000';
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
 
-  // 1. Centralized Authoritative Drone Position (Derived strictly from PX4/Gazebo Telemetry & /api/location/current)
+  // 1. Centralized Authoritative Drone Position (Derived strictly from PX4/Gazebo Location Pipeline)
   const rawLat = missionState.lat ?? missionState.latitude;
   const rawLng = missionState.lng ?? missionState.longitude;
 
@@ -91,9 +91,23 @@ export default function App() {
 
         if (telemRes.ok) {
           const data = await telemRes.json();
+          
+          // IMPORTANT:
+          // GPS coordinates are NOT accepted from generic telemetry.
+          // Drone location is controlled exclusively by the
+          // authoritative PX4/Gazebo location pipeline.
+          const {
+            lat,
+            lng,
+            latitude,
+            longitude,
+            coordinates,
+            ...telemetryWithoutGps
+          } = data;
+
           setMissionState(prev => ({
             ...prev,
-            ...data
+            ...telemetryWithoutGps
           }));
         }
 
@@ -155,21 +169,24 @@ export default function App() {
             if (msg.type === 'init') {
               if (msg.data?.telemetry) {
                 const tData = msg.data.telemetry;
-                setMissionState(prev => {
-                  const nextState = { ...prev, ...tData };
-                  const rLat = tData.lat ?? tData.latitude;
-                  const rLng = tData.lng ?? tData.longitude;
-                  if (Number.isFinite(rLat) && Number.isFinite(rLng) &&
-                      rLat >= -90 && rLat <= 90 && rLng >= -180 && rLng <= 180) {
-                    nextState.lat = rLat;
-                    nextState.lng = rLng;
-                    nextState.latitude = rLat;
-                    nextState.longitude = rLng;
-                    nextState.locationSource = tData.source || tData.locationSource || 'PX4_SIMULATOR';
-                    nextState.gpsActive = true;
-                  }
-                  return nextState;
-                });
+                
+                // IMPORTANT:
+                // GPS coordinates are NOT accepted from generic telemetry.
+                // Drone location is controlled exclusively by the
+                // authoritative PX4/Gazebo location pipeline.
+                const {
+                  lat,
+                  lng,
+                  latitude,
+                  longitude,
+                  coordinates,
+                  ...telemetryWithoutGps
+                } = tData;
+
+                setMissionState(prev => ({
+                  ...prev,
+                  ...telemetryWithoutGps
+                }));
               }
               if (msg.data?.location?.location) {
                 const loc = msg.data.location.location;
@@ -192,23 +209,26 @@ export default function App() {
             } else if (msg.type === 'telemetry') {
               const tData = msg.data;
               if (tData) {
-                setMissionState(prev => {
-                  const nextState = { ...prev, ...tData };
-                  const rLat = tData.lat ?? tData.latitude;
-                  const rLng = tData.lng ?? tData.longitude;
-                  if (Number.isFinite(rLat) && Number.isFinite(rLng) &&
-                      rLat >= -90 && rLat <= 90 && rLng >= -180 && rLng <= 180) {
-                    nextState.lat = rLat;
-                    nextState.lng = rLng;
-                    nextState.latitude = rLat;
-                    nextState.longitude = rLng;
-                    nextState.locationSource = tData.source || tData.locationSource || 'PX4_SIMULATOR';
-                    nextState.gpsActive = true;
-                  }
-                  return nextState;
-                });
+                // IMPORTANT:
+                // GPS coordinates are NOT accepted from generic telemetry.
+                // Drone location is controlled exclusively by the
+                // authoritative PX4/Gazebo location pipeline.
+                const {
+                  lat,
+                  lng,
+                  latitude,
+                  longitude,
+                  coordinates,
+                  ...telemetryWithoutGps
+                } = tData;
+
+                setMissionState(prev => ({
+                  ...prev,
+                  ...telemetryWithoutGps
+                }));
               }
             } else if (msg.type === 'location') {
+              // Dedicated location message IS allowed to update GPS coordinates
               const locData = msg.data;
               if (locData && locData.latitude !== undefined && locData.longitude !== undefined) {
                 const rLat = locData.latitude;
@@ -321,8 +341,7 @@ export default function App() {
       battery: zone.battery,
       checkpoint: zone.currentCheckpoint,
       survivorsCount: zone.survivorsCount,
-      hazardsCount: zone.hazardsCount,
-      coordinates: zone.coordinatesFormatted
+      hazardsCount: zone.hazardsCount
     }));
 
     setEventLog(prev => [
