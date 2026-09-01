@@ -1,24 +1,29 @@
+// ==========================================
+// AERIS DISASTER RESPONSE MISSION MOCK DATA
+// ==========================================
+
 export const INITIAL_MISSION_DATA = {
   missionId: "AERIS-MSN-2026-09A",
-  missionName: "OPERATION PHOENIX SHIELD",
+  missionName: "OPERATION PHOENIX RESCUE",
   sector: "SECTOR-04 (NORTH FLOOD BASIN)",
   startTime: "09:14:22 UTC",
   status: "ACTIVE SEARCH",
-  statusType: "ACTIVE", // ACTIVE | LOITERING | RETURNING | EMERGENCY
-  progress: 68,
+  statusType: "ACTIVE",
+  progress: 65,
   coverageAreaKm2: 4.85,
   checkpoints: {
-    total: 16,
-    completed: 11,
-    current: 12,
-    currentLabel: "CP-12 (SUBMERGED BRIDGE)"
+    total: 4,
+    completed: 2,
+    current: 3,
+    currentLabel: "CP-3 (SECTOR 4C DAM OVERHANG)"
   },
   geofenceStatus: "CONTAINED",
   estimatedFlightTimeRemaining: "24m 15s"
 };
 
+// 1. Drone Position & Telemetry
 export const INITIAL_DRONE_TELEMETRY = {
-  droneId: "UAV-AERIS-01",
+  droneId: "AERIS-01",
   callsign: "PHOENIX-ONE",
   model: "AERIS VTOL-SAR v2",
   connectionStatus: "CONNECTED",
@@ -31,18 +36,18 @@ export const INITIAL_DRONE_TELEMETRY = {
     cellHealth: "OPTIMAL"
   },
   position: {
-    lat: 19.0760,
-    lng: 72.8777,
-    altitudeAgl: 45.2, // meters Above Ground Level
-    altitudeMsl: 112.8, // meters Mean Sea Level
-    groundSpeed: 12.8, // m/s (46.1 km/h)
+    lat: 19.0765,
+    lng: 72.8785,
+    altitudeAgl: 42.5, // meters AGL
+    altitudeMsl: 112.8, // meters MSL
+    groundSpeed: 12.8, // m/s
     verticalSpeed: 0.1, // m/s
-    heading: 142 // degrees
+    heading: 135 // degrees (South-East)
   },
   attitude: {
     pitch: -2.4,
     roll: 1.1,
-    yaw: 142.0
+    yaw: 135.0
   },
   environment: {
     windSpeed: 4.2,
@@ -60,74 +65,185 @@ export const INITIAL_DRONE_TELEMETRY = {
   }
 };
 
-export const INITIAL_DETECTIONS = [
+// 2. Mission Checkpoints (CP-1 to CP-4)
+export const MOCK_CHECKPOINTS = [
+  { 
+    id: "CP-1", 
+    label: "CP-1", 
+    name: "Base Staging & Ingress", 
+    lat: 19.0710, 
+    lng: 72.8710, 
+    altitudeMeters: 40, 
+    status: "COMPLETED",
+    order: 1 
+  },
+  { 
+    id: "CP-2", 
+    label: "CP-2", 
+    name: "Submerged Bridge Grid", 
+    lat: 19.0745, 
+    lng: 72.8740, 
+    altitudeMeters: 45, 
+    status: "COMPLETED",
+    order: 2 
+  },
+  { 
+    id: "CP-3", 
+    label: "CP-3", 
+    name: "Residential Rooftops", 
+    lat: 19.0785, 
+    lng: 72.8805, 
+    altitudeMeters: 42, 
+    status: "IN_PROGRESS",
+    order: 3 
+  },
+  { 
+    id: "CP-4", 
+    label: "CP-4", 
+    name: "Evacuation Outflow Canal", 
+    lat: 19.0825, 
+    lng: 72.8850, 
+    altitudeMeters: 50, 
+    status: "PENDING",
+    order: 4 
+  },
+];
+
+// 3. Recorded Mission Flight Path
+export const MOCK_FLIGHT_PATH = [
+  [19.0710, 72.8710], // CP-1 Base
+  [19.0725, 72.8722],
+  [19.0745, 72.8740], // CP-2
+  [19.0758, 72.8762],
+  [19.0765, 72.8785], // Current Drone Position (AERIS-01)
+  [19.0785, 72.8805], // CP-3
+  [19.0805, 72.8828],
+  [19.0825, 72.8850], // CP-4
+];
+
+// 4. Survivor Locations
+export const MOCK_SURVIVORS = [
   {
-    id: "DET-8091",
-    timestamp: "09:42:15",
-    type: "SURVIVOR",
+    id: "SURV-01",
     label: "Stranded Person on Rooftop",
-    confidence: 94.8,
-    priority: "CRITICAL",
-    lat: 19.0785,
+    lat: 19.0780,
     lng: 72.8802,
-    details: "Individual waving from partially submerged rooftop. Thermal signature stable (36.8°C).",
-    requiresAction: true,
-    actionLabel: "Dispatch Rescue Team"
+    confidence: 94.8,
+    priority: "CRITICAL", // CRITICAL | HIGH | MODERATE
+    count: 1,
+    details: "Individual waving on flooded concrete rooftop. Thermal signature stable (36.8°C).",
+    timestamp: "09:42:15 UTC",
+    rescueStatus: "DISPATCHED"
   },
   {
-    id: "DET-8090",
-    timestamp: "09:38:02",
-    type: "HAZARD",
-    label: "Submerged High-Voltage Cable",
-    confidence: 89.2,
-    priority: "CRITICAL",
-    lat: 19.0742,
-    lng: 72.8745,
-    details: "High-voltage grid cable submerged in Sector 4B drainage. Active electrical arc risk.",
-    requiresAction: true,
-    actionLabel: "Broadcast Hazard Alert"
-  },
-  {
-    id: "DET-8089",
-    timestamp: "09:31:40",
-    type: "SURVIVOR",
+    id: "SURV-02",
     label: "Group (3 Persons) on High Ground",
-    confidence: 91.5,
+    lat: 19.0815,
+    lng: 72.8838,
+    confidence: 91.2,
     priority: "HIGH",
-    lat: 19.0810,
-    lng: 72.8835,
-    details: "3 subjects sheltered under concrete overhang. Floodwater level stationary.",
-    requiresAction: false,
-    actionLabel: "Monitor Coordinates"
+    count: 3,
+    details: "Family clustered on elevated staircase under overhang. Floodwater rising slowly.",
+    timestamp: "09:34:50 UTC",
+    rescueStatus: "QUEUED"
   },
   {
-    id: "DET-8087",
-    timestamp: "09:27:10",
-    type: "HAZARD",
-    label: "Structural Collapse / Debris Dam",
-    confidence: 87.4,
+    id: "SURV-03",
+    label: "Single Subject on Vehicle",
+    lat: 19.0735,
+    lng: 72.8755,
+    confidence: 88.5,
     priority: "MODERATE",
-    lat: 19.0768,
-    lng: 72.8860,
-    details: "Debris accumulation restricting waterway flow by 65%.",
-    requiresAction: false,
-    actionLabel: "Notify Engineering Unit"
-  },
-  {
-    id: "DET-8088",
-    timestamp: "09:24:19",
-    type: "SAFE_ZONE",
-    label: "Emergency Landing / Evacuation Point",
-    confidence: 98.1,
-    priority: "SAFE",
-    lat: 19.0715,
-    lng: 72.8710,
-    details: "Elevated paved dry ground clear of obstructions (40m x 40m).",
-    requiresAction: false,
-    actionLabel: "Designate Primary LZ"
+    count: 1,
+    details: "Person sitting atop submerged SUV. Water flow velocity moderate.",
+    timestamp: "09:28:10 UTC",
+    rescueStatus: "STANDBY"
   }
 ];
 
+// 5. Hazard Locations (Fire, Flood, Debris)
+export const MOCK_HAZARDS = [
+  {
+    id: "HAZ-01",
+    type: "FIRE",
+    label: "Transformer / Gas Fire",
+    lat: 19.0798,
+    lng: 72.8765,
+    severity: "CRITICAL",
+    details: "Active transformer short-circuit fire emitting dense toxic smoke. IR thermal temp: 385°C.",
+    radiusMeters: 45,
+    timestamp: "09:39:20 UTC"
+  },
+  {
+    id: "HAZ-02",
+    type: "FLOOD",
+    label: "Rapid Water Surge Basin",
+    lat: 19.0750,
+    lng: 72.8820,
+    severity: "HIGH",
+    details: "Flash flood surge zone with strong undercurrent. Water depth: 2.8m above baseline.",
+    radiusMeters: 120,
+    timestamp: "09:25:00 UTC",
+    polygon: [
+      [19.0735, 72.8800],
+      [19.0765, 72.8810],
+      [19.0770, 72.8845],
+      [19.0740, 72.8840]
+    ]
+  },
+  {
+    id: "HAZ-03",
+    type: "DEBRIS",
+    label: "Structural Collapse / Blocked Route",
+    lat: 19.0760,
+    lng: 72.8730,
+    severity: "MODERATE",
+    details: "Collapsed bridge girder obstructing ground rescue vehicle access along Primary Evacuation Route A.",
+    radiusMeters: 30,
+    timestamp: "09:31:12 UTC"
+  }
+];
+
+// 6. Tactical Geofence Boundary Polygon
+export const GEOFENCE_POLYGON = [
+  [19.0680, 72.8650],
+  [19.0860, 72.8680],
+  [19.0880, 72.8920],
+  [19.0720, 72.8950],
+  [19.0660, 72.8780]
+];
+
+// Unified detections list for DetectionPanel
+export const INITIAL_DETECTIONS = [
+  ...MOCK_SURVIVORS.map(s => ({
+    id: s.id,
+    timestamp: s.timestamp.substring(0, 8),
+    type: "SURVIVOR",
+    label: s.label,
+    confidence: s.confidence,
+    priority: s.priority,
+    lat: s.lat,
+    lng: s.lng,
+    details: s.details,
+    requiresAction: s.priority === "CRITICAL",
+    actionLabel: "Mark for Extraction"
+  })),
+  ...MOCK_HAZARDS.map(h => ({
+    id: h.id,
+    timestamp: h.timestamp.substring(0, 8),
+    type: "HAZARD",
+    label: h.label,
+    confidence: 92.0,
+    priority: h.severity,
+    lat: h.lat,
+    lng: h.lng,
+    details: h.details,
+    requiresAction: h.severity === "CRITICAL",
+    actionLabel: "Broadcast Hazard Alert"
+  }))
+];
+
+// Communications Status
 export const INITIAL_COMM_STATUS = {
   primaryLink: {
     name: "Ground Station RF Mesh (5.8 GHz)",
@@ -166,20 +282,3 @@ export const INITIAL_COMM_STATUS = {
     rateHz: 50.0
   }
 };
-
-export const INITIAL_MAP_WAYPOINTS = [
-  { id: 1, lat: 19.0710, lng: 72.8710, label: "BASE / LZ-01", type: "BASE" },
-  { id: 2, lat: 19.0730, lng: 72.8735, label: "CP-01", type: "CHECKPOINT" },
-  { id: 3, lat: 19.0755, lng: 72.8750, label: "CP-02", type: "CHECKPOINT" },
-  { id: 4, lat: 19.0785, lng: 72.8802, label: "CP-03 (Target Delta)", type: "TARGET" },
-  { id: 5, lat: 19.0810, lng: 72.8835, label: "CP-04 (High Ground)", type: "CHECKPOINT" },
-  { id: 6, lat: 19.0790, lng: 72.8870, label: "CP-05", type: "CHECKPOINT" },
-];
-
-export const GEOFENCE_POLYGON = [
-  [19.0680, 72.8650],
-  [19.0850, 72.8680],
-  [19.0880, 72.8920],
-  [19.0720, 72.8950],
-  [19.0660, 72.8780]
-];
