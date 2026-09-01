@@ -23,7 +23,7 @@ export default function LiveAICameraFeed({ missionState }) {
     { index: 0, name: 'Camera 0 (Primary Webcam)' },
     { index: 1, name: 'Camera 1 (Phone Link / Phone Cam)' }
   ]);
-  const [selectedCameraIndex, setSelectedCameraIndex] = useState(0);
+  const [selectedCameraIndex, setSelectedCameraIndex] = useState(1);
   const [isSwitching, setIsSwitching] = useState(false);
   const [streamKey, setStreamKey] = useState(Date.now());
   const [aiStatus, setAiStatus] = useState({ status: 'active', model: 'yolov8n.pt', inference_fps: 28.0 });
@@ -208,12 +208,13 @@ export default function LiveAICameraFeed({ missionState }) {
       {/* 3. Real Drone Camera Feed Visual Canvas (16:9) */}
       <div className="flex-1 relative bg-[#06090B] rounded-card overflow-hidden border border-white/10 flex flex-col justify-between p-2.5 min-h-0">
         {/* Real Live Hardware Video Stream with YOLO Annotations */}
-        <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-black">
+        <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-[#07090B]">
           <img
             key={`${feedMode}-${selectedCameraIndex}-${streamKey}`}
             src={videoFeedUrl}
             alt="AERIS-01 Real Hardware Camera Stream"
-            className={`w-full h-full object-cover transition-all duration-300 ${
+            crossOrigin="anonymous"
+            className={`w-full h-full object-contain transition-all duration-200 ${
               feedMode === 'THERMAL'
                 ? 'contrast-150 saturate-200 hue-rotate-[180deg] filter invert-[0.15]'
                 : ''
@@ -285,8 +286,12 @@ export default function LiveAICameraFeed({ missionState }) {
           </button>
         </div>
 
-        <button className="px-1.5 py-0.5 text-aeris-textSecondary hover:text-white bg-aeris-surface rounded border border-white/5">
-          <Maximize2 className="w-3 h-3" />
+        <button 
+          onClick={() => setStreamKey(Date.now())}
+          className="px-1.5 py-0.5 text-aeris-textSecondary hover:text-white bg-aeris-surface rounded border border-white/5"
+          title="Force refresh stream canvas"
+        >
+          <RefreshCw className="w-3 h-3" />
         </button>
       </div>
     </div>

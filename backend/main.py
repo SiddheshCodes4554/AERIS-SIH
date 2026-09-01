@@ -197,12 +197,21 @@ async def select_camera(payload: CameraSelectRequest):
 # VIDEO STREAM ENDPOINTS
 # ==========================================
 
+STREAM_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Connection": "close",
+    "Access-Control-Allow-Origin": "*"
+}
+
 @app.get("/api/video/feed")
 async def video_feed():
     """Streams clean, unannotated live MJPEG frames from the hardware webcam."""
     return StreamingResponse(
         camera_service.generate_frames(),
-        media_type="multipart/x-mixed-replace; boundary=frame"
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers=STREAM_HEADERS
     )
 
 
@@ -211,7 +220,8 @@ async def video_detection_feed():
     """Streams live MJPEG frames with real-time YOLO object detection bounding boxes."""
     return StreamingResponse(
         detection_service.generate_annotated_frames(),
-        media_type="multipart/x-mixed-replace; boundary=frame"
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers=STREAM_HEADERS
     )
 
 
