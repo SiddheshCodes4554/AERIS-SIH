@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger("aeris.camera")
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 class CameraService:
     _instance = None
@@ -34,27 +34,32 @@ class CameraService:
         self.latest_frame = None
         self.latest_jpeg = None
         self.frame_lock = threading.Lock()
+        self.cap_lock = threading.Lock()
         self.thread = None
+        self._last_reconnect_attempt = 0
+        self._is_reconnecting = False
         self._initialized = True
 
     def _open_camera(self, index=None):
-        """Attempts to open physical or virtual (Phone Link) camera using available backends."""
+        """Attempts to open physical or virtual (Phone Link) camera using direct backend without blocking."""
         idx = self.camera_index if index is None else index
-        backends = [cv2.CAP_DSHOW, cv2.CAP_ANY, cv2.CAP_MSMF] if os.name == 'nt' else [cv2.CAP_ANY]
+        
+        # On Windows, DirectShow is fastest and avoids MSMF hanging on virtual cameras
+        backends = [cv2.CAP_DSHOW, cv2.CAP_ANY] if os.name == 'nt' else [cv2.CAP_ANY]
 
         for b in backends:
             try:
                 cap = cv2.VideoCapture(idx, b)
                 if cap and cap.isOpened():
-                    # Read test frame to verify actual data capture
+                    # Quick non-blocking read test
                     ret, frame = cap.read()
                     if ret and frame is not None and frame.size > 0:
                         h, w = frame.shape[:2]
-                        logger.info(f"Connected to Camera at index {idx} ({w}x{h})")
+                        logger.info(f"Connected to Camera [{idx}] ({w}x{h})")
                         return cap
                     cap.release()
             except Exception as e:
-                logger.debug(f"Failed opening camera index {idx} with backend {b}: {e}")
+                logger.debug(f"Failed opening camera index {idx}: {e}")
         return None
 
     def _create_standby_frame(self, message="● CAMERA SENSOR STANDBY"):
@@ -82,7 +87,7 @@ class CameraService:
         # Status
         cv2.putText(frame, message, (cx - 210, cy + 200), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (245, 166, 35), 2, cv2.LINE_AA)
-        cv2.putText(frame, "SELECT CAMERA 0 (PRIMARY) OR CAMERA 1 (PHONE LINK / USB)", (cx - 310, cy + 235), 
+        cv2.putText(frame, "CLICK 'FAST RECONNECT' OR SELECT CAMERA FROM STRIP", (cx - 310, cy + 235), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.48, (140, 148, 146), 1, cv2.LINE_AA)
 
         # Timestamp
@@ -94,31 +99,36 @@ class CameraService:
         return frame, (jpeg.tobytes() if ret else None)
 
     def _capture_loop(self):
-        """Continuously captures frames from the active camera in background thread."""
+        """Continuously captures frames from the active camera in background thread with auto-healing."""
         logger.info("Real camera capture loop started.")
-        retry_delay = 1.5
+        retry_delay = 1.0
         last_retry = 0
 
         while self.is_running:
-            if self.cap is None or not self.cap.isOpened():
+            with self.cap_lock:
+                cap_ref = self.cap
+
+            if cap_ref is None or not cap_ref.isOpened():
                 self.is_camera_available = False
                 now = time.time()
                 if now - last_retry > retry_delay:
                     last_retry = now
-                    self.cap = self._open_camera(self.camera_index)
-                    if self.cap:
+                    new_cap = self._open_camera(self.camera_index)
+                    if new_cap:
+                        with self.cap_lock:
+                            self.cap = new_cap
                         self.is_camera_available = True
                 
                 if not self.is_camera_available:
-                    standby_frame, standby_jpeg = self._create_standby_frame("● CAMERA HARDWARE STANDBY")
+                    standby_frame, standby_jpeg = self._create_standby_frame("● SEARCHING FOR CAMERA SIGNAL...")
                     with self.frame_lock:
                         self.latest_frame = standby_frame
                         self.latest_jpeg = standby_jpeg
                     time.sleep(0.04)
                     continue
 
-            # Read frame from active camera (integrated or Phone Link)
-            ret, frame = self.cap.read()
+            # Read frame from active camera
+            ret, frame = cap_ref.read()
             if ret and frame is not None and frame.size > 0:
                 self.is_camera_available = True
                 encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 82]
@@ -128,11 +138,13 @@ class CameraService:
                         self.latest_frame = frame
                         self.latest_jpeg = jpeg.tobytes()
             else:
+                # Disconnected or frame drop
                 self.is_camera_available = False
-                if self.cap:
-                    self.cap.release()
-                    self.cap = None
-                time.sleep(0.2)
+                with self.cap_lock:
+                    if self.cap:
+                        self.cap.release()
+                        self.cap = None
+                time.sleep(0.1)
 
             time.sleep(0.02)
 
@@ -157,7 +169,7 @@ class CameraService:
         for i in range(max_check):
             # If this is current open device
             if i == self.camera_index and self.cap and self.cap.isOpened():
-                name = f"Camera {i} (Primary Webcam)" if i == 0 else f"Camera {i} (Phone Link / Virtual Cam)"
+                name = f"Camera {i} (Primary Webcam)" if i == 0 else f"Camera {i} (Phone Link / Phone Cam)"
                 devices.append({
                     "index": i,
                     "name": name,
@@ -175,9 +187,9 @@ class CameraService:
                     if ret and frame is not None:
                         h, w = frame.shape[:2]
                         if i == 0:
-                            label = f"Camera 0 (Integrated Webcam - {w}x{h})"
+                            label = f"Camera 0 (Primary Webcam - {w}x{h})"
                         elif i == 1:
-                            label = f"Camera 1 (Phone Link / Phone Cam - {w}x{h})"
+                            label = f"Camera 1 (Phone Link - {w}x{h})"
                         else:
                             label = f"Camera {i} (USB / External - {w}x{h})"
                         
@@ -194,13 +206,13 @@ class CameraService:
             devices = [
                 {
                     "index": 0,
-                    "name": "Camera 0 (Primary Integrated)",
+                    "name": "Camera 0 (Primary Webcam)",
                     "is_active": (self.camera_index == 0),
                     "available": self.is_camera_available
                 },
                 {
                     "index": 1,
-                    "name": "Camera 1 (Phone Link / Windows Virtual)",
+                    "name": "Camera 1 (Phone Link / Phone Cam)",
                     "is_active": (self.camera_index == 1),
                     "available": True
                 }
@@ -208,28 +220,35 @@ class CameraService:
         return devices
 
     def select_camera(self, new_index: int):
-        """Switches active camera index (e.g. from Integrated 0 to Phone Link 1)."""
+        """Switches active camera index with immediate driver release and fast reconnect."""
         logger.info(f"Switching active camera to index {new_index}...")
-        with self.frame_lock:
+        with self.cap_lock:
             if self.cap and self.cap.isOpened():
                 self.cap.release()
             self.cap = None
             self.camera_index = new_index
             self.is_camera_available = False
             
-            # Immediately attempt to open the new camera
-            self.cap = self._open_camera(new_index)
-            if self.cap:
+            # Immediate fast open
+            new_cap = self._open_camera(new_index)
+            if new_cap:
+                self.cap = new_cap
                 self.is_camera_available = True
                 ret, frame = self.cap.read()
                 if ret and frame is not None:
                     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 82]
                     ret_enc, jpeg = cv2.imencode('.jpg', frame, encode_param)
                     if ret_enc:
-                        self.latest_frame = frame
-                        self.latest_jpeg = jpeg.tobytes()
+                        with self.frame_lock:
+                            self.latest_frame = frame
+                            self.latest_jpeg = jpeg.tobytes()
 
         return self.get_status()
+
+    def force_reconnect(self):
+        """Forcefully resets video capture driver and immediately reconnects active camera."""
+        logger.info(f"Force reconnecting Camera [{self.camera_index}]...")
+        return self.select_camera(self.camera_index)
 
     def generate_frames(self):
         """Yields multipart MJPEG chunks for FastAPI StreamingResponse."""
@@ -250,8 +269,9 @@ class CameraService:
         self.is_running = False
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.0)
-        if self.cap and self.cap.isOpened():
-            self.cap.release()
+        with self.cap_lock:
+            if self.cap and self.cap.isOpened():
+                self.cap.release()
         logger.info("Camera service shutdown complete.")
 
 

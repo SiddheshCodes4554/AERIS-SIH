@@ -209,6 +209,16 @@ async def select_camera(payload: CameraSelectRequest):
     }
 
 
+@app.post("/api/camera/reconnect")
+async def reconnect_camera():
+    """Forces an immediate driver reset and reconnects the current active camera."""
+    status = camera_service.force_reconnect()
+    return {
+        "success": True,
+        "status": status
+    }
+
+
 # ==========================================
 # VIDEO STREAM ENDPOINTS
 # ==========================================

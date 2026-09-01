@@ -135,7 +135,26 @@ export default function LiveAICameraFeed({ missionState }) {
     }
   };
 
-  // 4. Update AI Model / Confidence / Filter Settings
+  // 4. Force Reconnect Action
+  const handleForceReconnect = async () => {
+    setIsSwitching(true);
+    try {
+      await fetch(`${backendUrl}/api/camera/reconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        mode: 'cors'
+      });
+      setTimeout(() => {
+        setStreamKey(Date.now());
+        setIsSwitching(false);
+      }, 300);
+    } catch (err) {
+      console.error("Reconnect failed:", err);
+      setIsSwitching(false);
+    }
+  };
+
+  // 5. Update AI Model / Confidence / Filter Settings
   const handleUpdateAIConfig = async (model, conf, filter) => {
     try {
       await fetch(`${backendUrl}/api/ai/config`, {
@@ -177,12 +196,16 @@ export default function LiveAICameraFeed({ missionState }) {
                 </span>
               ) : isSwitching ? (
                 <span className="flex items-center text-aeris-amber font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-amber/15 border border-aeris-amber/30 animate-pulse">
-                  SWITCHING...
+                  RECONNECTING...
                 </span>
               ) : (
-                <span className="flex items-center text-aeris-cyan font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-cyan/10 border border-aeris-cyan/30">
-                  ● STANDBY
-                </span>
+                <button
+                  onClick={handleForceReconnect}
+                  className="flex items-center text-aeris-amber font-mono text-[9px] font-bold px-1.5 py-0.2 rounded bg-aeris-amber/15 border border-aeris-amber/30 hover:bg-aeris-amber/25 transition-colors"
+                >
+                  <RefreshCw className="w-2.5 h-2.5 mr-1 animate-spin" />
+                  STANDBY • RECONNECT
+                </button>
               )}
             </div>
           </div>
