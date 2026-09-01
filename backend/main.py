@@ -1,8 +1,9 @@
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from camera_service import camera_service
@@ -36,6 +37,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class CameraSelectRequest(BaseModel):
+    camera_index: int
+
 
 @app.get("/api/health")
 async def health_check():
@@ -50,6 +54,26 @@ async def health_check():
 async def camera_status():
     """Returns the availability and operational status of the physical camera/webcam."""
     return camera_service.get_status()
+
+
+@app.get("/api/camera/devices")
+async def camera_devices():
+    """Probes and returns list of accessible cameras/webcams connected to the system."""
+    return {
+        "devices": camera_service.list_available_cameras(),
+        "active_index": camera_service.camera_index
+    }
+
+
+@app.post("/api/camera/select")
+async def select_camera(payload: CameraSelectRequest):
+    """Dynamically switches active camera index (0, 1, 2, etc.) without restarting server."""
+    status = camera_service.select_camera(payload.camera_index)
+    return {
+        "success": True,
+        "selected_index": payload.camera_index,
+        "status": status
+    }
 
 
 @app.get("/api/video/feed")

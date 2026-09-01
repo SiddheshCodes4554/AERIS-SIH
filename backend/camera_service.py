@@ -38,14 +38,15 @@ class CameraService:
         
         self.start()
 
-    def _open_camera(self):
+    def _open_camera(self, index=None):
         """Attempts to open the camera using OpenCV with appropriate backend."""
+        idx = self.camera_index if index is None else index
         try:
             # On Windows, cv2.CAP_DSHOW provides fast and reliable USB/Webcam initialization
             if os.name == 'nt':
-                cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
+                cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
             else:
-                cap = cv2.VideoCapture(self.camera_index)
+                cap = cv2.VideoCapture(idx)
 
             if cap and cap.isOpened():
                 # Configure 720p / standard 16:9 resolution & 30 FPS
@@ -56,12 +57,12 @@ class CameraService:
                 # Test reading a single frame
                 ret, frame = cap.read()
                 if ret and frame is not None:
-                    logger.info(f"Successfully connected to Camera at index {self.camera_index} ({frame.shape[1]}x{frame.shape[0]})")
+                    logger.info(f"Successfully connected to Camera at index {idx} ({frame.shape[1]}x{frame.shape[0]})")
                     return cap
                 else:
                     cap.release()
         except Exception as e:
-            logger.warning(f"Error opening camera index {self.camera_index}: {e}")
+            logger.warning(f"Error opening camera index {idx}: {e}")
         
         return None
 
@@ -160,6 +161,65 @@ class CameraService:
             "camera_index": self.camera_index,
             "status": "active" if self.is_camera_available else "unavailable"
         }
+
+    def list_available_cameras(self, max_check=4):
+        """Probes and returns list of accessible camera device indices."""
+        devices = []
+        for i in range(max_check):
+            # If current active camera is open at this index
+            if i == self.camera_index and self.cap and self.cap.isOpened():
+                devices.append({
+                    "index": i,
+                    "name": f"Camera {i} (Active Primary)",
+                    "is_active": True,
+                    "available": True
+                })
+                continue
+
+            try:
+                if os.name == 'nt':
+                    temp_cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+                else:
+                    temp_cap = cv2.VideoCapture(i)
+                
+                if temp_cap and temp_cap.isOpened():
+                    ret, _ = temp_cap.read()
+                    temp_cap.release()
+                    if ret:
+                        devices.append({
+                            "index": i,
+                            "name": f"Camera {i} (USB / External)",
+                            "is_active": (i == self.camera_index),
+                            "available": True
+                        })
+            except Exception as e:
+                logger.debug(f"Probe camera index {i} failed: {e}")
+
+        # If no devices detected through probe, at least report index 0
+        if not devices:
+            devices.append({
+                "index": 0,
+                "name": "Camera 0 (Default)",
+                "is_active": (self.camera_index == 0),
+                "available": self.is_camera_available
+            })
+
+        return devices
+
+    def select_camera(self, new_index: int):
+        """Switches the active camera index and resets the capture device."""
+        if self.camera_index == new_index and self.cap and self.cap.isOpened():
+            return self.get_status()
+
+        logger.info(f"Switching active camera from {self.camera_index} to {new_index}...")
+        with self.frame_lock:
+            if self.cap and self.cap.isOpened():
+                self.cap.release()
+            self.cap = None
+            self.camera_index = new_index
+            self.is_camera_available = False
+
+        return self.get_status()
 
     def generate_frames(self):
         """Generator function that yields multipart MJPEG chunks for FastAPI StreamingResponse."""
