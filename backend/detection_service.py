@@ -167,7 +167,7 @@ class DetectionService:
         # Text
         cv2.putText(img, label, (x1 + 5, pill_y2 - 4), font, font_scale, color, font_thick, cv2.LINE_AA)
 
-    def _process_detections(self, frame, results):
+    def _process_detections(self, frame, results, sim_targets=None):
         """Extracts filtered detection objects, applies stability/debouncing, and annotates frame."""
         annotated_frame = frame.copy()
         current_detections = []
@@ -202,29 +202,47 @@ class DetectionService:
                 
                 # Draw box on annotated frame
                 self._draw_tactical_box(annotated_frame, xyxy, cls_name, conf)
+
+        # Merge simulation targets if active and YOLO model hasn't already found identical items
+        if sim_targets:
+            for st in sim_targets:
+                cls_name = st["class"]
+                conf = st["confidence"]
+                bbox = st["bounding_box"]
+                xyxy = [bbox["x1"], bbox["y1"], bbox["x2"], bbox["y2"]]
                 
-                # Temporal stability / Debouncing for event log
-                last_event = self.event_cooldowns.get(cls_name)
-                should_emit = False
-                if not last_event or (now - last_event["time"] > self.cooldown_seconds):
-                    should_emit = True
-                elif conf > (last_event["confidence"] + 0.15):
-                    should_emit = True
+                # Check if we already have this class in current_detections
+                if not any(d["class"] == cls_name for d in current_detections):
+                    current_detections.append(st)
+                    self._draw_tactical_box(annotated_frame, xyxy, cls_name, conf)
+
+        # Emit events for new or upgraded detections
+        for det in current_detections:
+            cls_name = det["class"]
+            conf = det["confidence"]
+            display_name = det["display_name"]
+            
+            last_event = self.event_cooldowns.get(cls_name)
+            should_emit = False
+            if not last_event or (now - last_event["time"] > self.cooldown_seconds):
+                should_emit = True
+            elif conf > (last_event["confidence"] + 0.15):
+                should_emit = True
+            
+            if should_emit:
+                event_id = f"det_{int(now * 1000)}"
+                event_payload = {
+                    "event_id": event_id,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "class": cls_name,
+                    "display_name": display_name,
+                    "confidence": round(conf, 2)
+                }
+                self.event_history.append(event_payload)
+                self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
                 
-                if should_emit:
-                    event_id = f"det_{int(now * 1000)}"
-                    event_payload = {
-                        "event_id": event_id,
-                        "timestamp": datetime.utcnow().isoformat() + "Z",
-                        "class": cls_name,
-                        "display_name": display_name,
-                        "confidence": round(conf, 2)
-                    }
-                    self.event_history.append(event_payload)
-                    self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
-                    
-                    if self.event_callback:
-                        self.event_callback(event_payload)
+                if self.event_callback:
+                    self.event_callback(event_payload)
 
         # Encode annotated frame to JPEG
         ret, jpeg = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
@@ -262,19 +280,9 @@ class DetectionService:
             with camera_service.frame_lock:
                 frame = camera_service.latest_frame
                 is_cam_avail = camera_service.is_camera_available
+                sim_targets = camera_service.latest_sim_targets
             
-            if frame is None or not is_cam_avail:
-                standby_frame, standby_jpeg = camera_service._create_standby_frame("● AERIS VISION AI STANDBY")
-                with self.data_lock:
-                    self.latest_annotated_frame = standby_frame
-                    self.latest_annotated_jpeg = standby_jpeg
-                    self.latest_detections = {
-                        "timestamp": datetime.utcnow().isoformat() + "Z",
-                        "total_detections": 0,
-                        "detections": [],
-                        "inference_fps": 0.0,
-                        "inference_time_ms": 0.0
-                    }
+            if frame is None:
                 time.sleep(0.04)
                 continue
 
@@ -302,7 +310,7 @@ class DetectionService:
                 self.inference_time_ms = dt * 1000.0
                 self.total_frames_processed += 1
                 
-                self._process_detections(frame, results)
+                self._process_detections(frame, results, sim_targets)
             except Exception as e:
                 logger.error(f"Inference error: {e}")
                 time.sleep(0.1)

@@ -19,12 +19,14 @@ export default function LiveAICameraFeed({ missionState }) {
   const [isRecording, setIsRecording] = useState(true);
   const [cameraStatus, setCameraStatus] = useState('LIVE'); // 'LIVE' | 'CONNECTING' | 'STANDBY'
   const [devices, setDevices] = useState([
-    { index: 0, name: 'Camera 0 (Primary)' },
-    { index: 1, name: 'Camera 1 (Secondary)' }
+    { index: -1, name: 'Rescue Drone Simulator (EO/IR AI Feed)' },
+    { index: 0, name: 'Camera 0 (Integrated Webcam)' },
+    { index: 1, name: 'Camera 1 (USB Secondary)' }
   ]);
-  const [selectedCameraIndex, setSelectedCameraIndex] = useState(0);
+  const [selectedCameraIndex, setSelectedCameraIndex] = useState(-1);
   const [isSwitching, setIsSwitching] = useState(false);
   const [streamKey, setStreamKey] = useState(Date.now());
+  const [hasImageError, setHasImageError] = useState(false);
   const [aiStatus, setAiStatus] = useState({ status: 'active', model: 'yolov8n.pt', inference_fps: 28.0 });
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
@@ -65,7 +67,7 @@ export default function LiveAICameraFeed({ missionState }) {
         if (camRes.ok) {
           const camData = await camRes.json();
           if (isMounted) {
-            setCameraStatus(camData.camera_available ? 'LIVE' : 'STANDBY');
+            setCameraStatus(camData.status === 'active' ? (camData.is_simulation ? 'SIMULATOR' : 'LIVE') : 'STANDBY');
           }
         }
 
@@ -95,6 +97,7 @@ export default function LiveAICameraFeed({ missionState }) {
     const idx = parseInt(newIndex, 10);
     setSelectedCameraIndex(idx);
     setIsSwitching(true);
+    setHasImageError(false);
 
     try {
       const res = await fetch(`${backendUrl}/api/camera/select`, {
@@ -107,7 +110,7 @@ export default function LiveAICameraFeed({ missionState }) {
         setTimeout(() => {
           setStreamKey(Date.now());
           setIsSwitching(false);
-        }, 500);
+        }, 300);
       }
     } catch (err) {
       console.error("Failed to switch camera:", err);
@@ -131,7 +134,12 @@ export default function LiveAICameraFeed({ missionState }) {
             {cameraStatus === 'LIVE' ? (
               <span className="flex items-center text-aeris-red font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-red/15 border border-aeris-red/30">
                 <span className="w-1.5 h-1.5 rounded-full bg-aeris-red mr-1 animate-pulse"></span>
-                ● LIVE
+                ● WEBCAM LIVE
+              </span>
+            ) : cameraStatus === 'SIMULATOR' ? (
+              <span className="flex items-center text-aeris-cyan font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-cyan/15 border border-aeris-cyan/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-aeris-cyan mr-1 animate-pulse"></span>
+                ● SIMULATOR ACTIVE
               </span>
             ) : isSwitching ? (
               <span className="flex items-center text-aeris-amber font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-amber/15 border border-aeris-amber/30 animate-pulse">
@@ -156,7 +164,10 @@ export default function LiveAICameraFeed({ missionState }) {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setFeedMode(tab.id)}
+                onClick={() => {
+                  setFeedMode(tab.id);
+                  setHasImageError(false);
+                }}
                 className={`flex-1 py-0.5 rounded text-center font-semibold transition-all ${
                   feedMode === tab.id
                     ? 'bg-aeris-surfaceHover text-aeris-cyan border border-aeris-cyan/30 shadow-sm'
@@ -174,8 +185,8 @@ export default function LiveAICameraFeed({ missionState }) {
             <select
               value={selectedCameraIndex}
               onChange={(e) => handleSelectCamera(e.target.value)}
-              className="bg-transparent text-[#E8ECEF] focus:outline-none cursor-pointer text-[9px] font-bold pr-1"
-              title="Select active camera device / USB webcam"
+              className="bg-transparent text-[#E8ECEF] focus:outline-none cursor-pointer text-[9px] font-bold pr-1 max-w-[130px] truncate"
+              title="Select active camera device or rescue drone simulator"
             >
               {devices.map((d) => (
                 <option key={d.index} value={d.index} className="bg-[#111516] text-[#E8ECEF]">
@@ -198,22 +209,44 @@ export default function LiveAICameraFeed({ missionState }) {
       <div className="flex-1 relative bg-[#06090B] rounded-card overflow-hidden border border-white/10 flex flex-col justify-between p-2.5 min-h-0">
         {/* Real Live Hardware Video Stream with YOLO Annotations */}
         <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-black">
-          <img
-            key={`${feedMode}-${streamKey}`}
-            src={videoFeedUrl}
-            alt="AERIS-01 Real Hardware Webcam Stream"
-            className={`w-full h-full object-cover transition-all duration-300 ${
-              feedMode === 'THERMAL'
-                ? 'contrast-150 saturate-200 hue-rotate-[180deg] filter invert-[0.15]'
-                : ''
-            }`}
-          />
+          {!hasImageError ? (
+            <img
+              key={`${feedMode}-${streamKey}`}
+              src={videoFeedUrl}
+              alt="AERIS-01 Real Camera Stream"
+              className={`w-full h-full object-cover transition-all duration-300 ${
+                feedMode === 'THERMAL'
+                  ? 'contrast-150 saturate-200 hue-rotate-[180deg] filter invert-[0.15]'
+                  : ''
+              }`}
+              onError={() => {
+                setHasImageError(true);
+                setTimeout(() => setStreamKey(Date.now()), 2000);
+              }}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center text-center p-3 font-mono">
+              <Radio className="w-6 h-6 text-aeris-cyan mb-2 animate-pulse" />
+              <span className="text-xs font-bold text-white mb-1">RECONNECTING CAMERA STREAM...</span>
+              <button
+                onClick={() => {
+                  setHasImageError(false);
+                  setStreamKey(Date.now());
+                }}
+                className="mt-2 px-3 py-1 bg-aeris-cyan/20 border border-aeris-cyan/40 text-aeris-cyan rounded text-[10px] hover:bg-aeris-cyan/30"
+              >
+                RECONNECT NOW
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Top HUD Telemetry Overlay */}
         <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-white/90 drop-shadow pointer-events-none">
           <div className="bg-black/70 px-2 py-0.5 rounded border border-white/10 flex items-center space-x-1.5 backdrop-blur-sm">
-            <span className="text-aeris-cyan font-bold">CAM-{selectedCameraIndex} (EO/IR)</span>
+            <span className="text-aeris-cyan font-bold">
+              {selectedCameraIndex === -1 ? 'SIM-01 (EO/IR)' : `CAM-${selectedCameraIndex} (EO/IR)`}
+            </span>
             <span className="text-white/40">|</span>
             <span>ALT {missionState.altitude}</span>
             <span className="text-white/40">|</span>

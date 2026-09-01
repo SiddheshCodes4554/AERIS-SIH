@@ -27,7 +27,10 @@ export default function CameraPreviewCompact() {
           {['RGB', 'THERMAL', 'FUSION'].map((tab) => (
             <button
               key={tab}
-              onClick={() => setCameraTab(tab)}
+              onClick={() => {
+                setCameraTab(tab);
+                setIsError(false);
+              }}
               className={`px-2 py-0.5 rounded font-semibold transition-all ${
                 cameraTab === tab
                   ? 'bg-[#111516] text-[#3B9EFF] border border-white/10 shadow-sm'
