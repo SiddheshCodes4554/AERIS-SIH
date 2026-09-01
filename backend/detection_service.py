@@ -13,14 +13,38 @@ load_dotenv()
 logger = logging.getLogger("aeris.detection")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# STRICTLY Person Detection Only
-ALLOWED_CLASSES = {
-    "person": "PERSON DETECTED"
+# Priority Disaster & Tactical Search Classes with Dedicated Badges
+SEARCH_CLASSES = {
+    # 1. Survivors / Humans
+    "person": {"display": "🎯 PERSON", "category": "HUMAN", "color": (112, 235, 120)}, # Neon Green
+    
+    # 2. Vehicles / Transports
+    "car": {"display": "🚗 CAR", "category": "VEHICLE", "color": (35, 175, 255)},     # Amber
+    "truck": {"display": "🚚 TRUCK", "category": "VEHICLE", "color": (35, 175, 255)},
+    "bus": {"display": "🚌 BUS", "category": "VEHICLE", "color": (35, 175, 255)},
+    "motorcycle": {"display": "🏍️ MOTORCYCLE", "category": "VEHICLE", "color": (35, 175, 255)},
+    "bicycle": {"display": "🚲 BICYCLE", "category": "VEHICLE", "color": (35, 175, 255)},
+    "boat": {"display": "🚤 BOAT", "category": "VEHICLE", "color": (35, 175, 255)},
+    "airplane": {"display": "✈️ AIRCRAFT", "category": "VEHICLE", "color": (35, 175, 255)},
+    
+    # 3. Gear / Equipment
+    "backpack": {"display": "🎒 BACKPACK", "category": "GEAR", "color": (235, 160, 50)}, # Cyan
+    "handbag": {"display": "👜 HANDBAG", "category": "GEAR", "color": (235, 160, 50)},
+    "suitcase": {"display": "🧳 SUITCASE", "category": "GEAR", "color": (235, 160, 50)},
+    "cell phone": {"display": "📱 PHONE", "category": "GEAR", "color": (235, 160, 50)},
+    "laptop": {"display": "💻 LAPTOP", "category": "GEAR", "color": (235, 160, 50)},
+    "bottle": {"display": "🍾 BOTTLE", "category": "GEAR", "color": (235, 160, 50)},
+    
+    # 4. Animals / Rescue Dogs / Hazards
+    "dog": {"display": "🐕 K9 RESCUE", "category": "ANIMAL", "color": (234, 94, 165)},   # Purple/Pink
+    "cat": {"display": "🐈 ANIMAL", "category": "ANIMAL", "color": (234, 94, 165)},
+    "fire hydrant": {"display": "🧯 HYDRANT", "category": "HAZARD", "color": (61, 77, 255)}, # Red
 }
 
-# High-Visibility Tactical Colors (BGR format for OpenCV)
-CLASS_COLORS = {
-    "person": (112, 235, 120),     # Ultra-Bright Neon Green #70EB78
+AVAILABLE_MODELS = {
+    "yolov8s.pt": "YOLOv8-Small (High Precision • Recommended)",
+    "yolov8m.pt": "YOLOv8-Medium (Competition Ultra-Precision)",
+    "yolov8n.pt": "YOLOv8-Nano (Ultra Fast)"
 }
 
 class DetectionService:
@@ -38,11 +62,12 @@ class DetectionService:
         if self._initialized:
             return
         
-        self.model_name = os.getenv("YOLO_MODEL", "yolov8n.pt")
-        self.confidence_threshold = float(os.getenv("YOLO_CONFIDENCE", "0.45"))
-        self.high_conf_threshold = float(os.getenv("HIGH_CONFIDENCE_PERSON", "0.70"))
-        self.iou_threshold = float(os.getenv("YOLO_IOU", "0.45"))
+        # Default to High-Precision YOLOv8-Small for Competition Accuracy
+        self.model_name = os.getenv("YOLO_MODEL", "yolov8s.pt")
+        self.confidence_threshold = float(os.getenv("YOLO_CONFIDENCE", "0.58")) # Clean false-positive rejection
+        self.iou_threshold = float(os.getenv("YOLO_IOU", "0.50"))
         self.img_size = int(os.getenv("YOLO_IMG_SIZE", "640"))
+        self.target_filter = "ALL" # "ALL" | "HUMAN_ONLY" | "VEHICLES" | "GEAR"
         
         self.model = None
         self.device = "cpu"
@@ -54,8 +79,9 @@ class DetectionService:
         self.inference_time_ms = 0.0
         self.total_frames_processed = 0
         
-        # Spatial-Temporal Bounding Box Smoothing Cache {cls_name: [x1, y1, x2, y2]}
-        self.box_smoothing_cache = {}
+        # Spatial-Temporal Bounding Box Smoothing & Persistence Trackers
+        self.box_smoothing_cache = {} # {cls_name: [x1, y1, x2, y2]}
+        self.frame_hit_tracker = {}   # {cls_name: hit_count}
         
         # Thread synchronization & output storage
         self.data_lock = threading.Lock()
@@ -81,39 +107,55 @@ class DetectionService:
         self.thread = None
         self._initialized = True
 
-    def _init_model(self):
+    def _init_model(self, model_to_load=None):
         """Loads Ultralytics YOLO model once and warms it up."""
-        if self.is_model_loaded and self.model is not None:
-            return
+        target_model = model_to_load or self.model_name
         try:
             import torch
             from ultralytics import YOLO
             
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info(f"Loading AERIS Vision YOLO model '{self.model_name}' on device: {self.device.upper()}...")
+            logger.info(f"Loading High-Accuracy YOLO Model '{target_model}' on device: {self.device.upper()}...")
             
-            self.model = YOLO(self.model_name)
-            self.model.to(self.device)
+            new_model = YOLO(target_model)
+            new_model.to(self.device)
             
             # Warm up model with a dummy frame
             dummy_frame = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
-            self.model.predict(
+            new_model.predict(
                 source=dummy_frame, 
                 conf=self.confidence_threshold, 
                 iou=self.iou_threshold, 
                 imgsz=self.img_size, 
-                classes=[0], # Class 0 in COCO is strictly person
                 verbose=False
             )
             
+            self.model = new_model
+            self.model_name = target_model
             self.is_model_loaded = True
-            logger.info(f"AERIS Vision YOLO model '{self.model_name}' loaded successfully (Person Detector).")
+            logger.info(f"YOLO Model '{self.model_name}' loaded successfully with competition-grade accuracy.")
         except Exception as e:
-            logger.error(f"Failed to load YOLO model '{self.model_name}': {e}")
+            logger.error(f"Failed to load YOLO model '{target_model}': {e}")
             self.is_model_loaded = False
 
-    def _smooth_box(self, cls_name, raw_box, alpha=0.70):
-        """Applies Exponential Moving Average smoothing to stabilize bounding boxes."""
+    def set_config(self, model_name: str = None, confidence: float = None, target_filter: str = None):
+        """Dynamically switches YOLO model, confidence threshold, or filter mode."""
+        with self.data_lock:
+            if confidence is not None:
+                self.confidence_threshold = max(0.20, min(0.95, float(confidence)))
+                logger.info(f"Updated confidence threshold to: {self.confidence_threshold:.2f}")
+            
+            if target_filter is not None:
+                self.target_filter = target_filter
+                logger.info(f"Updated target filter mode to: {self.target_filter}")
+            
+            if model_name and model_name in AVAILABLE_MODELS and model_name != self.model_name:
+                self._init_model(model_name)
+
+        return self.get_status()
+
+    def _smooth_box(self, cls_name, raw_box, alpha=0.72):
+        """Applies Exponential Moving Average smoothing to eliminate frame-to-frame box jitter."""
         if cls_name not in self.box_smoothing_cache:
             self.box_smoothing_cache[cls_name] = [float(v) for v in raw_box]
             return [int(v) for v in raw_box]
@@ -126,8 +168,8 @@ class DetectionService:
         self.box_smoothing_cache[cls_name] = smoothed
         return [int(v) for v in smoothed]
 
-    def _draw_tactical_box(self, img, box, cls_name, conf):
-        """Draws high-visibility targeted bounding box with prominent LARGE font confidence badge."""
+    def _draw_tactical_box(self, img, box, cls_name, conf, info):
+        """Draws prominent, high-contrast tactical HUD bounding box with large confidence badge."""
         x1, y1, x2, y2 = [int(v) for v in box]
         h_img, w_img = img.shape[:2]
         
@@ -138,8 +180,7 @@ class DetectionService:
         bw = x2 - x1
         bh = y2 - y1
         
-        # If bounding box is abnormally large (e.g. covers >85% of screen when standing close),
-        # apply tight margin so it doesn't span edge-to-edge
+        # Prevent huge edge-to-edge box when standing close
         if bw > 0.88 * w_img:
             margin_x = int(bw * 0.08)
             x1 += margin_x
@@ -152,15 +193,15 @@ class DetectionService:
             y2 -= margin_y
             bh = y2 - y1
 
-        color = CLASS_COLORS.get(cls_name, (112, 235, 120))
+        color = info.get("color", (112, 235, 120))
         glow_color = (color[0] // 4, color[1] // 4, color[2] // 4)
         
         # 1. Subtle bounding box border outline
         cv2.rectangle(img, (x1, y1), (x2, y2), glow_color, 2, cv2.LINE_AA)
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 1, cv2.LINE_AA)
         
-        # 2. Prominent tactical corner reticle brackets (4px thick, length 32px)
-        corner_len = max(18, min(36, bw // 4, bh // 4))
+        # 2. Prominent tactical corner reticle brackets (4px thick, length 30px)
+        corner_len = max(16, min(34, bw // 4, bh // 4))
         thick = 4
         
         # Top-Left Corner
@@ -176,7 +217,7 @@ class DetectionService:
         cv2.line(img, (x2, y2), (x2 - corner_len, y2), color, thick)
         cv2.line(img, (x2, y2), (x2, y2 - corner_len), color, thick)
         
-        # 3. Target Center Crosshair
+        # 3. Target Center Crosshair Reticle
         cx = (x1 + x2) // 2
         cy = (y1 + y2) // 2
         ch_len = 10
@@ -186,15 +227,16 @@ class DetectionService:
         
         # 4. LARGE & CLEAR Tactical Header Badge (Font scale 0.85, Thick text, High Contrast)
         conf_pct = conf * 100.0
-        label_text = f" PERSON [ {conf_pct:.1f}% ] "
+        display_label = info.get("display", cls_name.upper())
+        label_text = f" {display_label} [ {conf_pct:.1f}% ] "
         
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.82  # Large prominent font
+        font_scale = 0.80
         font_thick = 2
         
         (tw, th), baseline = cv2.getTextSize(label_text, font, font_scale, font_thick)
         
-        # Determine badge position (above box if space permits, otherwise top-inside box)
+        # Position badge above box if space permits, otherwise top-inside box
         if y1 - th - 18 > 10:
             badge_y2 = y1 - 4
             badge_y1 = badge_y2 - th - 14
@@ -216,10 +258,12 @@ class DetectionService:
         cv2.putText(img, label_text, text_origin, font, font_scale, color, font_thick, cv2.LINE_AA)
 
     def _process_detections(self, frame, results):
-        """Extracts genuine YOLO person detections, applies smoothing, prints logs, and annotates frame."""
+        """Extracts genuine YOLO detections, applies 2-frame persistence, prints logs, and annotates frame."""
         annotated_frame = frame.copy()
         current_detections = []
         now = time.time()
+        
+        raw_detected_classes = set()
         
         if results and len(results) > 0 and results[0].boxes is not None:
             boxes = results[0].boxes
@@ -228,20 +272,45 @@ class DetectionService:
                 cls_name = self.model.names.get(cls_id, "").lower()
                 conf = float(box.conf[0].item())
                 
-                # Filter strictly for PERSON with confidence threshold
-                if cls_name != "person" or conf < self.confidence_threshold:
+                # 1. Filter out unknown/unwanted classes
+                if cls_name not in SEARCH_CLASSES:
                     continue
+                
+                info = SEARCH_CLASSES[cls_name]
+                category = info["category"]
+                
+                # 2. Apply category filter if set by operator
+                if self.target_filter == "HUMAN_ONLY" and category != "HUMAN":
+                    continue
+                elif self.target_filter == "VEHICLES" and category != "VEHICLE":
+                    continue
+                elif self.target_filter == "GEAR" and category != "GEAR":
+                    continue
+                
+                # 3. Apply strict confidence threshold for competition-grade precision
+                if conf < self.confidence_threshold:
+                    continue
+                
+                raw_detected_classes.add(cls_name)
+                
+                # 4. Multi-Frame Persistence Filter (Requires 2 consecutive hits to prune transient noise)
+                hit_count = self.frame_hit_tracker.get(cls_name, 0) + 1
+                self.frame_hit_tracker[cls_name] = hit_count
+                
+                if hit_count < 2 and conf < 0.70:
+                    continue # Wait 1 extra frame to confirm low-confidence candidate
                 
                 raw_xyxy = box.xyxy[0].tolist()
                 smoothed_xyxy = self._smooth_box(cls_name, raw_xyxy)
-                display_name = ALLOWED_CLASSES[cls_name]
+                display_name = info["display"]
                 
                 x1, y1, x2, y2 = smoothed_xyxy
                 w = x2 - x1
                 h = y2 - y1
                 
                 detection_item = {
-                    "class": "person",
+                    "class": cls_name,
+                    "category": category,
                     "display_name": display_name,
                     "confidence": round(conf, 2),
                     "confidence_pct": round(conf * 100, 1),
@@ -257,7 +326,7 @@ class DetectionService:
                 current_detections.append(detection_item)
                 
                 # Draw high-visibility tactical HUD bounding box
-                self._draw_tactical_box(annotated_frame, smoothed_xyxy, cls_name, conf)
+                self._draw_tactical_box(annotated_frame, smoothed_xyxy, cls_name, conf, info)
                 
                 # Terminal Console Logging & Event Emission
                 last_event = self.event_cooldowns.get(cls_name)
@@ -272,7 +341,8 @@ class DetectionService:
                     event_payload = {
                         "event_id": event_id,
                         "timestamp": datetime.utcnow().isoformat() + "Z",
-                        "class": "person",
+                        "class": cls_name,
+                        "category": category,
                         "display_name": display_name,
                         "confidence": round(conf, 2),
                         "confidence_pct": round(conf * 100, 1),
@@ -281,15 +351,18 @@ class DetectionService:
                     self.event_history.append(event_payload)
                     self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
                     
-                    # Formatted Terminal Log Output
-                    print(f">>> [AERIS TARGET ACQUIRED] 🎯 PERSON | Confidence: {conf*100:.1f}% | Bounding Box: [X: {x1}, Y: {y1}, W: {w}, H: {h}] | Latency: {self.inference_time_ms:.1f}ms")
+                    # Highlighted Formatted Terminal Output
+                    print(f">>> [AERIS TARGET ACQUIRED] {display_name} | Confidence: {conf*100:.1f}% | Box: [X:{x1}, Y:{y1}, W:{w}, H:{h}] | Latency: {self.inference_time_ms:.1f}ms")
                     
                     if self.event_callback:
                         self.event_callback(event_payload)
 
-        # Clear smoothing cache if no person in frame
-        if not current_detections and "person" in self.box_smoothing_cache:
-            del self.box_smoothing_cache["person"]
+        # Decay hit tracker for absent classes
+        for tracked_cls in list(self.frame_hit_tracker.keys()):
+            if tracked_cls not in raw_detected_classes:
+                del self.frame_hit_tracker[tracked_cls]
+                if tracked_cls in self.box_smoothing_cache:
+                    del self.box_smoothing_cache[tracked_cls]
 
         # Encode annotated frame to JPEG
         ret, jpeg = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
@@ -299,6 +372,7 @@ class DetectionService:
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "total_detections": len(current_detections),
             "detections": current_detections,
+            "model": self.model_name,
             "inference_fps": round(self.inference_fps, 1),
             "inference_time_ms": round(self.inference_time_ms, 1)
         }
@@ -315,7 +389,7 @@ class DetectionService:
     def _inference_loop(self):
         """Continuous inference worker reading from shared real hardware camera."""
         from camera_service import camera_service
-        logger.info("Real YOLO Person Detector inference loop started.")
+        logger.info(f"High-Precision YOLO Detection Loop started using '{self.model_name}'.")
         
         fps_smoothing = 0.9
         
@@ -335,13 +409,12 @@ class DetectionService:
             try:
                 t0 = time.time()
                 
-                # Single shared genuine YOLO inference strictly on person (class 0)
+                # Single shared genuine YOLO inference
                 results = self.model.predict(
                     source=frame,
                     conf=self.confidence_threshold,
                     iou=self.iou_threshold,
                     imgsz=self.img_size,
-                    classes=[0], # Class 0 = Person only
                     verbose=False
                 )
                 
@@ -377,9 +450,10 @@ class DetectionService:
         return {
             "status": "active" if self.is_model_loaded else "unavailable",
             "model": self.model_name,
-            "target_class": "person",
-            "device": self.device,
+            "model_label": AVAILABLE_MODELS.get(self.model_name, self.model_name),
+            "available_models": AVAILABLE_MODELS,
             "confidence_threshold": self.confidence_threshold,
+            "target_filter": self.target_filter,
             "iou_threshold": self.iou_threshold,
             "inference_fps": round(self.inference_fps, 1),
             "inference_time_ms": round(self.inference_time_ms, 1),

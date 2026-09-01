@@ -99,6 +99,11 @@ app.add_middleware(
 class CameraSelectRequest(BaseModel):
     camera_index: int
 
+class AIConfigRequest(BaseModel):
+    model_name: str = None
+    confidence_threshold: float = None
+    target_filter: str = None
+
 class ZoneSelectRequest(BaseModel):
     zone_id: str
 
@@ -126,8 +131,19 @@ async def health_check():
 
 @app.get("/api/ai/status")
 async def ai_status():
-    """Returns real-time YOLO AI model performance metrics and inference FPS."""
+    """Returns real-time YOLO AI model performance metrics, available models, and inference FPS."""
     return detection_service.get_status()
+
+
+@app.post("/api/ai/config")
+async def set_ai_config(payload: AIConfigRequest):
+    """Updates AI model (yolov8s, yolov8m, yolov8n), confidence threshold, or class filter."""
+    result = detection_service.set_config(
+        model_name=payload.model_name,
+        confidence=payload.confidence_threshold,
+        target_filter=payload.target_filter
+    )
+    return {"success": True, "status": result}
 
 
 # ==========================================

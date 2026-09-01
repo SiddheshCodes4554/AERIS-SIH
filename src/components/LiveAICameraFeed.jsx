@@ -12,7 +12,10 @@ import {
   Radio,
   RefreshCw,
   ChevronDown,
-  Smartphone
+  Smartphone,
+  Sliders,
+  ShieldAlert,
+  Target
 } from 'lucide-react';
 
 export default function LiveAICameraFeed({ missionState }) {
@@ -26,7 +29,17 @@ export default function LiveAICameraFeed({ missionState }) {
   const [selectedCameraIndex, setSelectedCameraIndex] = useState(1);
   const [isSwitching, setIsSwitching] = useState(false);
   const [streamKey, setStreamKey] = useState(Date.now());
-  const [aiStatus, setAiStatus] = useState({ status: 'active', model: 'yolov8n.pt', inference_fps: 28.0 });
+  const [aiStatus, setAiStatus] = useState({
+    status: 'active',
+    model: 'yolov8s.pt',
+    confidence_threshold: 0.58,
+    target_filter: 'ALL',
+    inference_fps: 28.0
+  });
+
+  const [selectedModel, setSelectedModel] = useState('yolov8s.pt');
+  const [targetFilter, setTargetFilter] = useState('ALL');
+  const [confThreshold, setConfThreshold] = useState(58);
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   
@@ -74,6 +87,9 @@ export default function LiveAICameraFeed({ missionState }) {
           const aiData = await aiRes.json();
           if (isMounted) {
             setAiStatus(aiData);
+            if (aiData.model) setSelectedModel(aiData.model);
+            if (aiData.target_filter) setTargetFilter(aiData.target_filter);
+            if (aiData.confidence_threshold) setConfThreshold(Math.round(aiData.confidence_threshold * 100));
           }
         }
       } catch (err) {
@@ -91,7 +107,7 @@ export default function LiveAICameraFeed({ missionState }) {
     };
   }, [backendUrl, streamKey]);
 
-  // 3. Handle dynamic camera selection
+  // 3. Dynamic Camera Switch
   const handleSelectCamera = async (newIndex) => {
     const idx = parseInt(newIndex, 10);
     setSelectedCameraIndex(idx);
@@ -113,6 +129,24 @@ export default function LiveAICameraFeed({ missionState }) {
     } catch (err) {
       console.error("Failed to switch camera:", err);
       setIsSwitching(false);
+    }
+  };
+
+  // 4. Update AI Model / Confidence / Filter Settings
+  const handleUpdateAIConfig = async (model, conf, filter) => {
+    try {
+      await fetch(`${backendUrl}/api/ai/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_name: model || selectedModel,
+          confidence_threshold: (conf !== undefined ? conf : confThreshold) / 100.0,
+          target_filter: filter || targetFilter
+        }),
+        mode: 'cors'
+      });
+    } catch (err) {
+      console.error("Failed to update AI config:", err);
     }
   };
 
@@ -149,58 +183,106 @@ export default function LiveAICameraFeed({ missionState }) {
           </div>
         </div>
 
-        {/* 2. Mode Switcher & Dynamic Camera Selector Strip */}
-        <div className="flex items-center space-x-1.5 mb-2">
-          {/* Mode Switcher Tabs: [ RGB ] [ THERMAL ] [ AI OVERLAY ] */}
-          <div className="flex-1 flex space-x-0.5 p-0.5 bg-aeris-surface rounded-card border border-aeris-border text-[9.5px] font-mono">
-            {[
-              { id: 'RGB', label: 'RGB' },
-              { id: 'THERMAL', label: 'THERMAL' },
-              { id: 'AI_OVERLAY', label: 'AI OVERLAY' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setFeedMode(tab.id)}
-                className={`flex-1 py-0.5 rounded text-center font-semibold transition-all ${
-                  feedMode === tab.id
-                    ? 'bg-aeris-surfaceHover text-aeris-cyan border border-aeris-cyan/30 shadow-sm'
-                    : 'text-aeris-textSecondary hover:text-aeris-textPrimary border border-transparent'
-                }`}
+        {/* 2. Top Control Strips: Mode, Camera Device & AI Model Precision */}
+        <div className="space-y-1.5 mb-2">
+          <div className="flex items-center space-x-1.5">
+            {/* Mode Switcher Tabs: [ RGB ] [ THERMAL ] [ AI OVERLAY ] */}
+            <div className="flex-1 flex space-x-0.5 p-0.5 bg-aeris-surface rounded-card border border-aeris-border text-[9px] font-mono">
+              {[
+                { id: 'RGB', label: 'RGB' },
+                { id: 'THERMAL', label: 'THERMAL' },
+                { id: 'AI_OVERLAY', label: 'AI OVERLAY' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setFeedMode(tab.id)}
+                  className={`flex-1 py-0.5 rounded text-center font-semibold transition-all ${
+                    feedMode === tab.id
+                      ? 'bg-aeris-surfaceHover text-aeris-cyan border border-aeris-cyan/30 shadow-sm'
+                      : 'text-aeris-textSecondary hover:text-aeris-textPrimary border border-transparent'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Camera Device Selector Dropdown */}
+            <div className="flex items-center bg-[#15191C] border border-white/10 rounded-card px-2 py-0.5 text-[9px] font-mono text-[#E8ECEF]">
+              {isPhoneCam ? (
+                <Smartphone className="w-2.5 h-2.5 text-aeris-green mr-1 shrink-0" />
+              ) : (
+                <Camera className="w-2.5 h-2.5 text-aeris-cyan mr-1 shrink-0" />
+              )}
+              <select
+                value={selectedCameraIndex}
+                onChange={(e) => handleSelectCamera(e.target.value)}
+                className="bg-transparent text-[#E8ECEF] focus:outline-none cursor-pointer text-[9px] font-bold pr-1 max-w-[130px] truncate"
+                title="Select Camera Device"
               >
-                {tab.label}
+                {devices.map((d) => (
+                  <option key={d.index} value={d.index} className="bg-[#111516] text-[#E8ECEF]">
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  fetchDevices();
+                  setStreamKey(Date.now());
+                }}
+                className="p-0.5 text-[#8C9492] hover:text-aeris-cyan transition-colors ml-0.5"
+                title="Rescan camera devices"
+              >
+                <RefreshCw className="w-2.5 h-2.5" />
               </button>
-            ))}
+            </div>
           </div>
 
-          {/* Camera Device Selector Dropdown */}
-          <div className="flex items-center bg-[#15191C] border border-white/10 rounded-card px-2 py-0.5 text-[9.5px] font-mono text-[#E8ECEF]">
-            {isPhoneCam ? (
-              <Smartphone className="w-2.5 h-2.5 text-aeris-green mr-1 shrink-0" />
-            ) : (
-              <Camera className="w-2.5 h-2.5 text-aeris-cyan mr-1 shrink-0" />
-            )}
-            <select
-              value={selectedCameraIndex}
-              onChange={(e) => handleSelectCamera(e.target.value)}
-              className="bg-transparent text-[#E8ECEF] focus:outline-none cursor-pointer text-[9px] font-bold pr-1 max-w-[150px] truncate"
-              title="Select camera (Integrated webcam or Link to Windows phone camera)"
-            >
-              {devices.map((d) => (
-                <option key={d.index} value={d.index} className="bg-[#111516] text-[#E8ECEF]">
-                  {d.name}
-                </option>
+          {/* AI Tactical Model & Filter Selection Bar */}
+          <div className="flex items-center justify-between bg-black/40 border border-white/5 rounded-card px-2 py-1 text-[8.5px] font-mono text-aeris-textSecondary">
+            <div className="flex items-center space-x-1">
+              <Cpu className="w-2.5 h-2.5 text-aeris-cyan shrink-0" />
+              <select
+                value={selectedModel}
+                onChange={(e) => {
+                  const m = e.target.value;
+                  setSelectedModel(m);
+                  handleUpdateAIConfig(m, undefined, undefined);
+                }}
+                className="bg-transparent text-aeris-cyan font-bold focus:outline-none cursor-pointer text-[8.5px] max-w-[160px] truncate"
+                title="Select YOLO Architecture Precision"
+              >
+                <option value="yolov8s.pt" className="bg-[#111516] text-white">YOLOv8-Small (High Precision)</option>
+                <option value="yolov8m.pt" className="bg-[#111516] text-white">YOLOv8-Medium (Competition)</option>
+                <option value="yolov8n.pt" className="bg-[#111516] text-white">YOLOv8-Nano (Ultra Fast)</option>
+              </select>
+            </div>
+
+            {/* Target Filter Buttons */}
+            <div className="flex items-center space-x-0.5">
+              {[
+                { id: 'ALL', label: 'ALL' },
+                { id: 'HUMAN_ONLY', label: 'HUMANS' },
+                { id: 'VEHICLES', label: 'VEHICLES' },
+                { id: 'GEAR', label: 'GEAR' }
+              ].map((filter) => (
+                <button
+                  key={filter.id}
+                  onClick={() => {
+                    setTargetFilter(filter.id);
+                    handleUpdateAIConfig(undefined, undefined, filter.id);
+                  }}
+                  className={`px-1.5 py-0.2 rounded text-[8px] font-bold transition-all ${
+                    targetFilter === filter.id
+                      ? 'bg-aeris-cyan/20 text-aeris-cyan border border-aeris-cyan/40'
+                      : 'text-aeris-textMuted hover:text-white border border-transparent'
+                  }`}
+                >
+                  {filter.label}
+                </button>
               ))}
-            </select>
-            <button
-              onClick={() => {
-                fetchDevices();
-                setStreamKey(Date.now());
-              }}
-              className="p-0.5 text-[#8C9492] hover:text-aeris-cyan transition-colors ml-0.5"
-              title="Rescan camera devices"
-            >
-              <RefreshCw className="w-2.5 h-2.5" />
-            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -210,7 +292,7 @@ export default function LiveAICameraFeed({ missionState }) {
         {/* Real Live Hardware Video Stream with YOLO Annotations */}
         <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-[#07090B]">
           <img
-            key={`${feedMode}-${selectedCameraIndex}-${streamKey}`}
+            key={`${feedMode}-${selectedCameraIndex}-${selectedModel}-${streamKey}`}
             src={videoFeedUrl}
             alt="AERIS-01 Real Hardware Camera Stream"
             crossOrigin="anonymous"
@@ -262,9 +344,9 @@ export default function LiveAICameraFeed({ missionState }) {
         </div>
       </div>
 
-      {/* 4. Camera Control Actions */}
+      {/* 4. Camera & Sensitivity Actions Strip */}
       <div className="flex items-center justify-between pt-2 border-t border-aeris-border mt-2 text-[9.5px] font-mono shrink-0">
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1.5">
           <button 
             onClick={() => setIsRecording(!isRecording)}
             className={`px-2 py-0.5 rounded transition-colors flex items-center space-x-1 border border-white/5 ${
@@ -275,14 +357,29 @@ export default function LiveAICameraFeed({ missionState }) {
             <span>{isRecording ? 'REC' : 'STBY'}</span>
           </button>
 
-          <button className="px-2 py-0.5 rounded text-aeris-textSecondary hover:text-white bg-aeris-surface border border-white/5 flex items-center">
-            <Camera className="w-2.5 h-2.5 mr-0.5" />
-            <span>SNAP</span>
-          </button>
+          {/* Confidence Threshold Dial */}
+          <div className="flex items-center space-x-1 bg-aeris-surface px-2 py-0.5 rounded border border-white/5 text-[8.5px]">
+            <Sliders className="w-2.5 h-2.5 text-aeris-cyan" />
+            <span className="text-aeris-textSecondary">CONF:</span>
+            <input
+              type="range"
+              min="35"
+              max="85"
+              value={confThreshold}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                setConfThreshold(val);
+                handleUpdateAIConfig(undefined, val, undefined);
+              }}
+              className="w-14 h-1 bg-white/20 rounded accent-aeris-cyan cursor-pointer"
+              title={`Confidence Filter: ${confThreshold}%`}
+            />
+            <span className="text-aeris-cyan font-bold">{confThreshold}%</span>
+          </div>
 
           <button className="px-2 py-0.5 rounded text-aeris-cyan bg-aeris-cyan/15 border border-aeris-cyan/30 flex items-center">
             <Crosshair className="w-2.5 h-2.5 mr-0.5" />
-            <span>TRACK</span>
+            <span>LOCK</span>
           </button>
         </div>
 
