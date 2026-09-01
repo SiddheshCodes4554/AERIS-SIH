@@ -38,29 +38,26 @@ class CameraService:
         self._initialized = True
 
     def _open_camera(self, index=None):
-        """Attempts to open physical webcam using DirectShow on Windows."""
+        """Attempts to open physical or virtual (Phone Link) camera using available backends."""
         idx = self.camera_index if index is None else index
-        try:
-            if os.name == 'nt':
-                cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
-            else:
-                cap = cv2.VideoCapture(idx)
+        backends = [cv2.CAP_DSHOW, cv2.CAP_ANY, cv2.CAP_MSMF] if os.name == 'nt' else [cv2.CAP_ANY]
 
-            if cap and cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-                cap.set(cv2.CAP_PROP_FPS, 30)
-                
-                ret, frame = cap.read()
-                if ret and frame is not None and frame.size > 0:
-                    logger.info(f"Connected to Physical Camera at index {idx} ({frame.shape[1]}x{frame.shape[0]})")
-                    return cap
-                cap.release()
-        except Exception as e:
-            logger.warning(f"Error opening physical camera {idx}: {e}")
+        for b in backends:
+            try:
+                cap = cv2.VideoCapture(idx, b)
+                if cap and cap.isOpened():
+                    # Read test frame to verify actual data capture
+                    ret, frame = cap.read()
+                    if ret and frame is not None and frame.size > 0:
+                        h, w = frame.shape[:2]
+                        logger.info(f"Connected to Camera at index {idx} ({w}x{h})")
+                        return cap
+                    cap.release()
+            except Exception as e:
+                logger.debug(f"Failed opening camera index {idx} with backend {b}: {e}")
         return None
 
-    def _create_standby_frame(self, message="● PHYSICAL CAMERA DISCONNECTED"):
+    def _create_standby_frame(self, message="● CAMERA SENSOR STANDBY"):
         """Generates clean tactical payload standby screen when hardware camera is disconnected."""
         frame = np.zeros((720, 1280, 3), dtype=np.uint8)
         frame[:] = (11, 14, 15)
@@ -85,7 +82,7 @@ class CameraService:
         # Status
         cv2.putText(frame, message, (cx - 210, cy + 200), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (245, 166, 35), 2, cv2.LINE_AA)
-        cv2.putText(frame, "CONNECT HARDWARE WEBCAM OR SELECT ACTIVE USB DEVICE", (cx - 290, cy + 235), 
+        cv2.putText(frame, "SELECT CAMERA 0 (PRIMARY) OR CAMERA 1 (PHONE LINK / USB)", (cx - 310, cy + 235), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.48, (140, 148, 146), 1, cv2.LINE_AA)
 
         # Timestamp
@@ -97,9 +94,9 @@ class CameraService:
         return frame, (jpeg.tobytes() if ret else None)
 
     def _capture_loop(self):
-        """Continuously captures frames from the real hardware webcam in background thread."""
+        """Continuously captures frames from the active camera in background thread."""
         logger.info("Real camera capture loop started.")
-        retry_delay = 2.0
+        retry_delay = 1.5
         last_retry = 0
 
         while self.is_running:
@@ -113,14 +110,14 @@ class CameraService:
                         self.is_camera_available = True
                 
                 if not self.is_camera_available:
-                    standby_frame, standby_jpeg = self._create_standby_frame("● PHYSICAL CAMERA DISCONNECTED")
+                    standby_frame, standby_jpeg = self._create_standby_frame("● CAMERA HARDWARE STANDBY")
                     with self.frame_lock:
                         self.latest_frame = standby_frame
                         self.latest_jpeg = standby_jpeg
                     time.sleep(0.04)
                     continue
 
-            # Read frame from active physical webcam
+            # Read frame from active camera (integrated or Phone Link)
             ret, frame = self.cap.read()
             if ret and frame is not None and frame.size > 0:
                 self.is_camera_available = True
@@ -135,9 +132,9 @@ class CameraService:
                 if self.cap:
                     self.cap.release()
                     self.cap = None
-                time.sleep(0.3)
+                time.sleep(0.2)
 
-            time.sleep(0.03)
+            time.sleep(0.02)
 
     def start(self):
         """Starts the physical camera capture thread."""
@@ -147,40 +144,90 @@ class CameraService:
             self.thread.start()
 
     def get_status(self):
-        """Returns the current physical camera availability status."""
+        """Returns the current camera availability status."""
         return {
             "camera_available": self.is_camera_available,
             "camera_index": self.camera_index,
             "status": "active" if self.is_camera_available else "disconnected"
         }
 
-    def list_available_cameras(self):
-        """Returns list of real hardware camera devices only."""
-        devices = [
-            {
-                "index": 0,
-                "name": "Camera 0 (Primary Webcam)",
-                "is_active": (self.camera_index == 0),
-                "available": self.is_camera_available if self.camera_index == 0 else True
-            },
-            {
-                "index": 1,
-                "name": "Camera 1 (USB / Secondary)",
-                "is_active": (self.camera_index == 1),
-                "available": self.is_camera_available if self.camera_index == 1 else True
-            }
-        ]
+    def list_available_cameras(self, max_check=4):
+        """Actively probes connected camera devices (Integrated, Phone Link, USB)."""
+        devices = []
+        for i in range(max_check):
+            # If this is current open device
+            if i == self.camera_index and self.cap and self.cap.isOpened():
+                name = f"Camera {i} (Primary Webcam)" if i == 0 else f"Camera {i} (Phone Link / Virtual Cam)"
+                devices.append({
+                    "index": i,
+                    "name": name,
+                    "is_active": True,
+                    "available": True
+                })
+                continue
+
+            # Probe other indices
+            try:
+                cap = cv2.VideoCapture(i, cv2.CAP_DSHOW) if os.name == 'nt' else cv2.VideoCapture(i)
+                if cap and cap.isOpened():
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret and frame is not None:
+                        h, w = frame.shape[:2]
+                        if i == 0:
+                            label = f"Camera 0 (Integrated Webcam - {w}x{h})"
+                        elif i == 1:
+                            label = f"Camera 1 (Phone Link / Phone Cam - {w}x{h})"
+                        else:
+                            label = f"Camera {i} (USB / External - {w}x{h})"
+                        
+                        devices.append({
+                            "index": i,
+                            "name": label,
+                            "is_active": (i == self.camera_index),
+                            "available": True
+                        })
+            except Exception:
+                pass
+
+        if not devices:
+            devices = [
+                {
+                    "index": 0,
+                    "name": "Camera 0 (Primary Integrated)",
+                    "is_active": (self.camera_index == 0),
+                    "available": self.is_camera_available
+                },
+                {
+                    "index": 1,
+                    "name": "Camera 1 (Phone Link / Windows Virtual)",
+                    "is_active": (self.camera_index == 1),
+                    "available": True
+                }
+            ]
         return devices
 
     def select_camera(self, new_index: int):
-        """Switches active physical camera index."""
-        logger.info(f"Switching active hardware camera to index {new_index}...")
+        """Switches active camera index (e.g. from Integrated 0 to Phone Link 1)."""
+        logger.info(f"Switching active camera to index {new_index}...")
         with self.frame_lock:
             if self.cap and self.cap.isOpened():
                 self.cap.release()
             self.cap = None
             self.camera_index = new_index
             self.is_camera_available = False
+            
+            # Immediately attempt to open the new camera
+            self.cap = self._open_camera(new_index)
+            if self.cap:
+                self.is_camera_available = True
+                ret, frame = self.cap.read()
+                if ret and frame is not None:
+                    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 82]
+                    ret_enc, jpeg = cv2.imencode('.jpg', frame, encode_param)
+                    if ret_enc:
+                        self.latest_frame = frame
+                        self.latest_jpeg = jpeg.tobytes()
 
         return self.get_status()
 

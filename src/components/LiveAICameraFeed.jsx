@@ -11,7 +11,8 @@ import {
   Cpu,
   Radio,
   RefreshCw,
-  ChevronDown
+  ChevronDown,
+  Smartphone
 } from 'lucide-react';
 
 export default function LiveAICameraFeed({ missionState }) {
@@ -19,8 +20,8 @@ export default function LiveAICameraFeed({ missionState }) {
   const [isRecording, setIsRecording] = useState(true);
   const [cameraStatus, setCameraStatus] = useState('LIVE'); // 'LIVE' | 'STANDBY'
   const [devices, setDevices] = useState([
-    { index: 0, name: 'Camera 0 (Primary)' },
-    { index: 1, name: 'Camera 1 (Secondary)' }
+    { index: 0, name: 'Camera 0 (Primary Webcam)' },
+    { index: 1, name: 'Camera 1 (Phone Link / Phone Cam)' }
   ]);
   const [selectedCameraIndex, setSelectedCameraIndex] = useState(0);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -107,13 +108,16 @@ export default function LiveAICameraFeed({ missionState }) {
         setTimeout(() => {
           setStreamKey(Date.now());
           setIsSwitching(false);
-        }, 500);
+        }, 400);
       }
     } catch (err) {
       console.error("Failed to switch camera:", err);
       setIsSwitching(false);
     }
   };
+
+  const activeDeviceName = devices.find(d => d.index === selectedCameraIndex)?.name || `CAM-${selectedCameraIndex}`;
+  const isPhoneCam = selectedCameraIndex === 1 || activeDeviceName.toLowerCase().includes('phone');
 
   return (
     <div className="w-full h-full aeris-panel-container p-3 flex flex-col justify-between select-none font-sans overflow-hidden">
@@ -170,12 +174,16 @@ export default function LiveAICameraFeed({ missionState }) {
 
           {/* Camera Device Selector Dropdown */}
           <div className="flex items-center bg-[#15191C] border border-white/10 rounded-card px-2 py-0.5 text-[9.5px] font-mono text-[#E8ECEF]">
-            <Camera className="w-2.5 h-2.5 text-aeris-cyan mr-1 shrink-0" />
+            {isPhoneCam ? (
+              <Smartphone className="w-2.5 h-2.5 text-aeris-green mr-1 shrink-0" />
+            ) : (
+              <Camera className="w-2.5 h-2.5 text-aeris-cyan mr-1 shrink-0" />
+            )}
             <select
               value={selectedCameraIndex}
               onChange={(e) => handleSelectCamera(e.target.value)}
-              className="bg-transparent text-[#E8ECEF] focus:outline-none cursor-pointer text-[9px] font-bold pr-1 max-w-[130px] truncate"
-              title="Select active camera device"
+              className="bg-transparent text-[#E8ECEF] focus:outline-none cursor-pointer text-[9px] font-bold pr-1 max-w-[150px] truncate"
+              title="Select camera (Integrated webcam or Link to Windows phone camera)"
             >
               {devices.map((d) => (
                 <option key={d.index} value={d.index} className="bg-[#111516] text-[#E8ECEF]">
@@ -202,7 +210,7 @@ export default function LiveAICameraFeed({ missionState }) {
         {/* Real Live Hardware Video Stream with YOLO Annotations */}
         <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-black">
           <img
-            key={`${feedMode}-${streamKey}`}
+            key={`${feedMode}-${selectedCameraIndex}-${streamKey}`}
             src={videoFeedUrl}
             alt="AERIS-01 Real Hardware Camera Stream"
             className={`w-full h-full object-cover transition-all duration-300 ${
@@ -216,7 +224,9 @@ export default function LiveAICameraFeed({ missionState }) {
         {/* Top HUD Telemetry Overlay */}
         <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-white/90 drop-shadow pointer-events-none">
           <div className="bg-black/70 px-2 py-0.5 rounded border border-white/10 flex items-center space-x-1.5 backdrop-blur-sm">
-            <span className="text-aeris-cyan font-bold">CAM-{selectedCameraIndex} (EO/IR)</span>
+            <span className={`${isPhoneCam ? 'text-aeris-green' : 'text-aeris-cyan'} font-bold`}>
+              {isPhoneCam ? '📱 PHONE LINK (CAM-1)' : `CAM-${selectedCameraIndex} (EO/IR)`}
+            </span>
             <span className="text-white/40">|</span>
             <span>ALT {missionState.altitude}</span>
             <span className="text-white/40">|</span>
