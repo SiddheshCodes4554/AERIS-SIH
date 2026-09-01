@@ -1,18 +1,13 @@
 import React from 'react';
 import { 
-  Activity, 
   Compass, 
   ShieldAlert, 
   Sparkles, 
-  Cpu, 
+  Sliders, 
+  MapPin, 
   Wifi, 
   Bell, 
-  User,
-  Radio,
-  Sliders,
-  MapPin,
-  RotateCcw,
-  ChevronDown
+  User 
 } from 'lucide-react';
 import { DISASTER_ZONES } from '../data/operationalAreas.js';
 
@@ -24,7 +19,6 @@ export default function Navigation({
 }) {
   const navItems = [
     { id: 'live-mission', label: 'Live Mission Command', icon: Compass },
-    { id: 'offline-autonomy', label: 'Offline Autonomy', icon: RotateCcw, badge: 'RECOVERY' },
     { id: 'aeris01-operations', label: 'AERIS-01 Operations', icon: Sliders, badge: 'HEALTH' },
     { id: 'incidents', label: 'Incidents / Alerts', icon: ShieldAlert, badge: '3' },
     { id: 'intelligence', label: 'Mission Intelligence', icon: Sparkles, badge: 'AI' },
@@ -33,7 +27,7 @@ export default function Navigation({
   return (
     <nav className="h-14 px-4 bg-[#0B0E0F] border-b border-aeris-border flex items-center justify-between select-none shrink-0 z-30 font-sans">
       {/* 1. Left: Brand Logo & Title */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-5">
         <div 
           className="flex items-center space-x-2.5 cursor-pointer" 
           onClick={() => onSelectTab('live-mission')}
@@ -59,7 +53,7 @@ export default function Navigation({
           </div>
         </div>
 
-        {/* 2. Top Nav Items */}
+        {/* 2. Top Nav Items (Main Operations & Intelligence) */}
         <div className="hidden md:flex items-center space-x-1 p-0.5 rounded-pill bg-[#15191C] border border-white/5 text-[11px] font-mono">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -78,13 +72,11 @@ export default function Navigation({
                 <span>{item.label}</span>
                 {item.badge && (
                   <span className={`text-[8px] px-1.5 py-0.2 rounded-full font-bold ${
-                    item.badge === 'RECOVERY'
-                      ? 'bg-[#F5A623]/20 text-[#F5A623] border border-[#F5A623]/40'
-                      : item.badge === 'HEALTH'
-                        ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
-                        : item.badge === 'AI' 
-                          ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
-                          : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
+                    item.badge === 'HEALTH'
+                      ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
+                      : item.badge === 'AI' 
+                        ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
+                        : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
                   }`}>
                     {item.badge}
                   </span>
@@ -95,7 +87,7 @@ export default function Navigation({
         </div>
       </div>
 
-      {/* 3. Center/Right: OPERATIONAL AREA / ROUTE SELECTOR (Controls entire app state) */}
+      {/* 3. Operational Disaster Zone Selector & Live Telemetry Link */}
       <div className="flex items-center space-x-2.5 text-xs font-mono">
         <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#15191C] border border-[#3B9EFF]/30 text-[#E8ECEF] shadow-sm">
           <MapPin className="w-3.5 h-3.5 text-[#3B9EFF]" />
@@ -117,7 +109,7 @@ export default function Navigation({
           </div>
         </div>
 
-        {/* System Status: READY / NOMINAL */}
+        {/* System Status: NOMINAL */}
         <div className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1 rounded-pill bg-[#15191C] border border-white/5 text-[#E8ECEF]">
           <span className="w-1.5 h-1.5 rounded-full bg-[#63C174] shadow-[0_0_8px_rgba(99,193,116,0.6)]"></span>
           <span className="text-[10px] font-bold text-[#63C174]">● AUTONOMOUS</span>

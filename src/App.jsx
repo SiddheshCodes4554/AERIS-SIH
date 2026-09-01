@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navigation from './components/Navigation.jsx';
-import OfflineAutonomyView from './components/backtracking/OfflineAutonomyView.jsx';
 import AERIS01OperationsView from './components/operations/AERIS01OperationsView.jsx';
 import IncidentResponseView from './components/incidents/IncidentResponseView.jsx';
 import MissionIntelligenceView from './components/analytics/MissionIntelligenceView.jsx';
@@ -29,14 +28,35 @@ import {
 } from './data/mockData.js';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('live-mission'); // 'live-mission' | 'offline-autonomy' | 'aeris01-operations' | 'incidents' | 'intelligence'
+  const [activeTab, setActiveTab] = useState('live-mission'); // 'live-mission' | 'aeris01-operations' | 'incidents' | 'intelligence'
   const [selectedZoneId, setSelectedZoneId] = useState('chamoli-flood');
   const [simulationMode, setSimulationMode] = useState('NORMAL');
+  const [isPlayingAutoDemo, setIsPlayingAutoDemo] = useState(false);
   const [missionState, setMissionState] = useState(INITIAL_MISSION_STATE);
   const [eventLog, setEventLog] = useState(CHRONOLOGICAL_EVENTS);
 
   // Active Selected Operational Disaster Zone
   const activeZone = DISASTER_ZONES.find(z => z.id === selectedZoneId) || DISASTER_ZONES[0];
+
+  // Automated Backtracking Recovery Demo Engine
+  useEffect(() => {
+    let timer;
+    if (isPlayingAutoDemo) {
+      if (simulationMode === 'NORMAL') {
+        timer = setTimeout(() => handleSetSimulationMode('SIGNAL_LOSS'), 2000);
+      } else if (simulationMode === 'SIGNAL_LOSS') {
+        timer = setTimeout(() => handleSetSimulationMode('BACKTRACKING'), 3000);
+      } else if (simulationMode === 'BACKTRACKING') {
+        timer = setTimeout(() => handleSetSimulationMode('RECONNECTED'), 4000);
+      } else if (simulationMode === 'RECONNECTED') {
+        timer = setTimeout(() => {
+          handleSetSimulationMode('NORMAL');
+          setIsPlayingAutoDemo(false);
+        }, 2500);
+      }
+    }
+    return () => clearTimeout(timer);
+  }, [isPlayingAutoDemo, simulationMode]);
 
   const handleSelectZone = (zoneId) => {
     setSelectedZoneId(zoneId);
@@ -57,7 +77,7 @@ export default function App() {
 
     setEventLog(prev => [
       { time: now, text: `Operational Disaster Zone Switched to: ${zone.name}`, color: "blue" },
-      { time: now, text: `Autonomous Search Route Armed • Coordinates: ${zone.coordinatesFormatted}`, color: "green" },
+      { time: now, text: `Autonomous Search Pattern Loaded • Coordinates: ${zone.coordinatesFormatted}`, color: "green" },
       ...prev
     ]);
   };
@@ -74,7 +94,8 @@ export default function App() {
         signalLostTime: '02:14 AGO'
       }));
       setEventLog(prev => [
-        { time: now, text: "RF Signal Lost (Mountain Ridge Obstruction) • Local Edge AI Active", color: "red" },
+        { time: now, text: "⚠ RF Signal Lost (Mountain Gorge Obstruction) • Local Edge AI Autonomous Mode Active", color: "red" },
+        { time: now, text: "Edge AI Buffering Critical Video & Detection Data to NVMe Storage (24 Events)", color: "amber" },
         ...prev
       ]);
     } else if (mode === 'BACKTRACKING') {
@@ -85,7 +106,7 @@ export default function App() {
         checkpoint: activeZone.lastConnectedCheckpoint
       }));
       setEventLog(prev => [
-        { time: now, text: `Autonomous Backtracking Active • Returning to ${activeZone.lastConnectedCheckpoint} (72%)`, color: "amber" },
+        { time: now, text: `Autonomous Backtracking Engaged • Reversing along recorded path to ${activeZone.lastConnectedCheckpoint} (72%)`, color: "amber" },
         ...prev
       ]);
     } else if (mode === 'RECONNECTED') {
@@ -95,7 +116,8 @@ export default function App() {
         bufferedEventsCount: 0
       }));
       setEventLog(prev => [
-        { time: now, text: `Mesh Link Restored at ${activeZone.lastConnectedCheckpoint} • 24 Buffered Events Transmitted`, color: "green" },
+        { time: now, text: `5.8 GHz Mesh Link Restored at ${activeZone.lastConnectedCheckpoint} • Transmitting Buffered Telemetry`, color: "green" },
+        { time: now, text: "Data Synchronization Complete • 100% Data Integrity Verified", color: "green" },
         ...prev
       ]);
     } else if (mode === 'DETECTION') {
@@ -110,7 +132,7 @@ export default function App() {
         bufferedEventsCount: 0
       }));
       setEventLog(prev => [
-        { time: now, text: "System State Normal • Autonomous Search Pattern Active", color: "green" },
+        { time: now, text: "Autonomous Search Pattern Resumed • Mission Status Nominal", color: "green" },
         ...prev
       ]);
     }
@@ -146,12 +168,21 @@ export default function App() {
 
       {/* 2. MAIN APPLICATION VIEWS */}
       {activeTab === 'live-mission' ? (
-        /* LIVE MISSION DISASTER RESPONSE COMMAND CENTER VIEW (55% DOMINANT SATELLITE MAP) */
+        /* LIVE MISSION DISASTER RESPONSE COMMAND CENTER VIEW */
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <Header 
             missionState={missionState}
             simulationMode={simulationMode}
             onSetSimulationMode={handleSetSimulationMode}
+            isPlayingAutoDemo={isPlayingAutoDemo}
+            onToggleAutoDemo={() => {
+              if (isPlayingAutoDemo) {
+                setIsPlayingAutoDemo(false);
+              } else {
+                setSimulationMode('NORMAL');
+                setIsPlayingAutoDemo(true);
+              }
+            }}
           />
 
           <main className="flex-1 p-2 flex flex-col gap-2 min-h-0 overflow-hidden">
@@ -221,11 +252,6 @@ export default function App() {
             }}
             isOfflineMode={isOffline || isBacktracking}
           />
-        </div>
-      ) : activeTab === 'offline-autonomy' ? (
-        /* OFFLINE AUTONOMY & BACKTRACKING RECOVERY VIEW */
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <OfflineAutonomyView />
         </div>
       ) : activeTab === 'aeris01-operations' ? (
         /* AERIS-01 SYSTEM OPERATIONS & UAV HEALTH VIEW */

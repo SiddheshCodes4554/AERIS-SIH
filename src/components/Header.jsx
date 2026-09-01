@@ -8,13 +8,17 @@ import {
   RotateCcw, 
   Sparkles,
   Layers,
-  AlertTriangle
+  AlertTriangle,
+  Play,
+  Pause
 } from 'lucide-react';
 
 export default function Header({ 
   missionState, 
   simulationMode, 
-  onSetSimulationMode 
+  onSetSimulationMode,
+  isPlayingAutoDemo,
+  onToggleAutoDemo
 }) {
   const [time, setTime] = useState(new Date());
 
@@ -31,29 +35,29 @@ export default function Header({
     switch (simulationMode) {
       case 'SIGNAL_LOSS':
         return {
-          text: 'SIGNAL LOST ● OFFLINE',
-          bg: 'bg-aeris-red/20 text-aeris-red border-aeris-red/40 animate-pulse shadow-glow-red'
+          text: 'SIGNAL LOST ● OFFLINE AI ACTIVE',
+          bg: 'bg-[#FF4D3D]/20 text-[#FF4D3D] border-[#FF4D3D]/40 animate-pulse shadow-[0_0_10px_rgba(255,77,61,0.3)]'
         };
       case 'BACKTRACKING':
         return {
           text: 'AUTONOMOUS BACKTRACKING ●',
-          bg: 'bg-aeris-amber/20 text-aeris-amber border-aeris-amber/40 animate-pulse shadow-glow-amber'
+          bg: 'bg-[#F5A623]/20 text-[#F5A623] border-[#F5A623]/40 animate-pulse shadow-[0_0_10px_rgba(245,166,35,0.4)]'
         };
       case 'RECONNECTED':
         return {
           text: 'SYNCING BUFFERED DATA ●',
-          bg: 'bg-aeris-cyan/20 text-aeris-cyan border-aeris-cyan/40 shadow-glow-blue'
+          bg: 'bg-[#3B9EFF]/20 text-[#3B9EFF] border-[#3B9EFF]/40 shadow-[0_0_10px_rgba(59,158,255,0.3)]'
         };
       case 'DETECTION':
         return {
-          text: 'TARGET ACQUIRED ●',
-          bg: 'bg-aeris-amber/20 text-aeris-amber border-aeris-amber/40 shadow-glow-amber'
+          text: 'SURVIVOR CONFIRMED (96%) ●',
+          bg: 'bg-[#F5A623]/20 text-[#F5A623] border-[#F5A623]/40 shadow-[0_0_10px_rgba(245,166,35,0.3)]'
         };
       case 'NORMAL':
       default:
         return {
-          text: 'SYSTEM ONLINE ●',
-          bg: 'bg-aeris-green/20 text-aeris-green border-aeris-green/40 shadow-glow-green'
+          text: 'SYSTEM ONLINE ● NOMINAL',
+          bg: 'bg-[#63C174]/20 text-[#63C174] border-[#63C174]/40 shadow-[0_0_10px_rgba(99,193,116,0.3)]'
         };
     }
   };
@@ -94,18 +98,32 @@ export default function Header({
         </div>
         <div className="h-4 w-[1px] bg-aeris-border"></div>
         <div>
-          <span className="text-[8.5px] text-aeris-textMuted uppercase block leading-none">LOCATION</span>
-          <span className="text-aeris-textSecondary">{missionState.location} • <strong className="text-aeris-cyan">{missionState.missionId}</strong></span>
+          <span className="text-[8.5px] text-aeris-textMuted uppercase block leading-none">TARGET CHECKPOINT</span>
+          <span className="text-aeris-cyan font-bold">{missionState.checkpoint}</span>
         </div>
       </div>
 
       {/* 3. Right: Demo Simulation State Switcher & System Status */}
       <div className="flex items-center space-x-2">
+        {/* Automated Backtracking Recovery Demo Button */}
+        <button
+          onClick={onToggleAutoDemo}
+          className={`px-3 py-1 rounded-pill font-mono text-[10px] font-bold flex items-center space-x-1.5 transition-all shadow-md ${
+            isPlayingAutoDemo
+              ? 'bg-[#F5A623] text-black animate-pulse shadow-[0_0_12px_rgba(245,166,35,0.5)]'
+              : 'bg-[#1C2125] hover:bg-[#181D1E] text-[#F5A623] border border-[#F5A623]/40'
+          }`}
+          title="Click to play fully automated signal loss and backtracking recovery sequence"
+        >
+          {isPlayingAutoDemo ? <Pause className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+          <span>{isPlayingAutoDemo ? 'RECOVERY DEMO ACTIVE...' : '▶ AUTO BACKTRACK DEMO'}</span>
+        </button>
+
         {/* Interactive Scenario States */}
         <div className="hidden md:flex items-center space-x-1 bg-aeris-surface p-0.5 rounded-pill border border-aeris-border text-[9.5px] font-mono">
           {[
             { id: 'NORMAL', label: 'NORMAL' },
-            { id: 'DETECTION', label: 'SURVIVOR DETECT' },
+            { id: 'DETECTION', label: 'AI DETECT' },
             { id: 'SIGNAL_LOSS', label: 'SIGNAL LOSS' },
             { id: 'BACKTRACKING', label: 'BACKTRACK' },
             { id: 'RECONNECTED', label: 'RECONNECT' },
@@ -130,7 +148,7 @@ export default function Header({
         </div>
 
         {/* Real-time Clock */}
-        <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-aeris-surface border border-aeris-border rounded-pill text-[10.5px] font-mono text-aeris-textPrimary">
+        <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 bg-aeris-surface border border-aeris-border rounded-pill text-[10.5px] font-mono text-aeris-textPrimary">
           <Clock className="w-3 h-3 text-aeris-textSecondary" />
           <span>{formatTime(time)}</span>
         </div>
