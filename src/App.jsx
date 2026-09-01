@@ -1,121 +1,143 @@
 import React, { useState } from 'react';
-import TopNavbar from './components/TopNavbar.jsx';
-import LeftOperationsPanel from './components/LeftOperationsPanel.jsx';
-import RightAlertsPanel from './components/RightAlertsPanel.jsx';
-import SelectedDroneCard from './components/SelectedDroneCard.jsx';
-import BottomAnalytics from './components/BottomAnalytics.jsx';
-import MapControls from './components/MapControls.jsx';
-import MissionMap from './components/MissionMap.jsx';
+import Header from './components/Header.jsx';
+import MissionTelemetry from './components/MissionTelemetry.jsx';
+import LiveDisasterMap from './components/LiveDisasterMap.jsx';
+import RescueIntelligence from './components/RescueIntelligence.jsx';
+import LiveCameraFeeds from './components/LiveCameraFeeds.jsx';
+import CommunicationPanel from './components/CommunicationPanel.jsx';
+import MissionEvents from './components/MissionEvents.jsx';
+import MissionControls from './components/MissionControls.jsx';
+import BottomStatusBar from './components/BottomStatusBar.jsx';
 
 import {
-  FLEET_SUMMARY,
-  EFFICIENCY_TIMELINE,
-  DRONE_FLEET,
-  ACTIVE_ALERTS,
-  AI_INTELLIGENCE,
-  INCIDENT_ZONES,
-  MISSION_CHECKPOINTS
+  MISSION_METADATA,
+  DRONE_TELEMETRY,
+  CHECKPOINTS_LIST,
+  FLIGHT_ROUTES,
+  SURVIVORS_DATA,
+  HAZARDS_DATA,
+  RESCUE_INTELLIGENCE_ITEMS,
+  RISK_HEATMAP_ZONES,
+  SENSOR_FUSION_DATA,
+  COMMUNICATION_STATE,
+  INITIAL_MISSION_EVENTS
 } from './data/mockData.js';
 
 export default function App() {
-  const [activeNavTab, setActiveNavTab] = useState("Live Operations");
-  const [selectedDroneId, setSelectedDroneId] = useState("AERIS-01");
-  const [mapLayer, setMapLayer] = useState("satellite"); // satellite | terrain
-  const [showIncidentZones, setShowIncidentZones] = useState(true);
-  const [showRoutes, setShowRoutes] = useState(true);
-  const [mapCenter, setMapCenter] = useState([30.5520, 79.5580]);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const [missionEvents, setMissionEvents] = useState(INITIAL_MISSION_EVENTS);
+  const [telemetry, setTelemetry] = useState(DRONE_TELEMETRY);
 
-  // Find currently selected drone object
-  const selectedDrone = DRONE_FLEET.find(d => d.id === selectedDroneId) || DRONE_FLEET[0];
+  // Toggle Signal Loss / Autonomous Backtracking Simulation
+  const handleToggleOffline = (forceState) => {
+    const newState = typeof forceState === 'boolean' ? forceState : !isOfflineMode;
+    setIsOfflineMode(newState);
 
-  // Handle Drone selection
-  const handleSelectDrone = (droneId) => {
-    setSelectedDroneId(droneId);
-    const target = DRONE_FLEET.find(d => d.id === droneId);
-    if (target && target.position) {
-      setMapCenter([target.position.lat, target.position.lng]);
+    if (newState) {
+      // Add event for signal lost and backtracking
+      setMissionEvents(prev => [
+        { time: new Date().toISOString().substring(11, 19), label: "Signal Lost (Terrain Shadow) • Autonomous Backtracking Initiated", color: "amber", icon: "backtrack" },
+        ...prev
+      ]);
+    } else {
+      // Add event for reconnection
+      setMissionEvents(prev => [
+        { time: new Date().toISOString().substring(11, 19), label: "Link Restored via CP-3 Mesh • Synchronizing Buffered Data", color: "green", icon: "wifi" },
+        ...prev
+      ]);
     }
   };
 
-  // Recenter on disaster operations zone
-  const handleRecenter = () => {
-    if (selectedDrone && selectedDrone.position) {
-      setMapCenter([selectedDrone.position.lat, selectedDrone.position.lng]);
-    } else {
-      setMapCenter([30.5520, 79.5580]);
+  const handleActionTrigger = (action) => {
+    const timestamp = new Date().toISOString().substring(11, 19);
+    if (action === 'START_MISSION') {
+      setMissionEvents(prev => [{ time: timestamp, label: "Mission Resumed (Autonomous Navigation Active)", color: "green" }, ...prev]);
+    } else if (action === 'PAUSE_MISSION') {
+      setMissionEvents(prev => [{ time: timestamp, label: "Mission Paused (Holding Position / Loitering)", color: "amber" }, ...prev]);
+    } else if (action === 'RETURN_TO_BASE') {
+      setMissionEvents(prev => [{ time: timestamp, label: "RTL Command Issued (Returning to Base LZ)", color: "blue" }, ...prev]);
+    } else if (action === 'MANUAL_OVERRIDE_ACTIVE') {
+      setMissionEvents(prev => [{ time: timestamp, label: "EMERGENCY MANUAL OVERRIDE ENGAGED", color: "red" }, ...prev]);
     }
   };
 
   return (
-    <div className="w-screen h-screen relative overflow-hidden bg-aeris-bg text-aeris-textPrimary flex flex-col font-sans select-none">
-      {/* 1. LAYER 0: FULL-SCREEN INTERACTIVE SATELLITE / TERRAIN MAP CANVAS */}
-      <MissionMap 
-        drones={DRONE_FLEET}
-        selectedDroneId={selectedDroneId}
-        onSelectDrone={handleSelectDrone}
-        incidentZones={INCIDENT_ZONES}
-        checkpoints={MISSION_CHECKPOINTS}
-        mapLayer={mapLayer}
-        showIncidentZones={showIncidentZones}
-        showRoutes={showRoutes}
-        centerPosition={mapCenter}
+    <div className="h-screen w-screen bg-aeris-bg text-aeris-textPrimary flex flex-col overflow-hidden font-sans select-none">
+      {/* 1. TOP HEADER (72px) */}
+      <Header 
+        metadata={MISSION_METADATA}
+        isOfflineMode={isOfflineMode}
+        onToggleOfflineSimulation={() => handleToggleOffline()}
       />
 
-      {/* 2. LAYER 1: TOP NAVIGATION BAR */}
-      <TopNavbar 
-        activeTab={activeNavTab} 
-        onTabChange={setActiveNavTab} 
-      />
-
-      {/* 3. LAYER 2: FLOATING DASHBOARD INTERFACE PANELS */}
-      <div className="relative flex-1 p-4 pointer-events-none flex justify-between z-10 overflow-hidden">
-        {/* LEFT FLOATING OPERATIONS PANEL */}
-        <div className="pointer-events-auto h-full flex flex-col">
-          <LeftOperationsPanel 
-            fleetSummary={FLEET_SUMMARY}
-            efficiencyData={EFFICIENCY_TIMELINE}
-            drones={DRONE_FLEET}
-            selectedDroneId={selectedDroneId}
-            onSelectDrone={handleSelectDrone}
+      {/* 2. MAIN STRUCTURED DASHBOARD CONTAINER (Full Viewport Grid Layout) */}
+      <main className="flex-1 p-2.5 flex flex-col gap-2.5 min-h-0 overflow-y-auto lg:overflow-hidden">
+        {/* UPPER ROW: MISSION TELEMETRY (Left) + LIVE DISASTER MAP (Center) + RESCUE INTELLIGENCE (Right) */}
+        <section className="flex-1 flex flex-col lg:flex-row gap-2.5 min-h-[320px] lg:min-h-0">
+          {/* Left Panel: Dedicated Mission Telemetry (300px) */}
+          <MissionTelemetry 
+            telemetry={telemetry}
+            isOfflineMode={isOfflineMode}
           />
-        </div>
 
-        {/* CENTER FLOATING AREA (Top Controls + Bottom Selected Drone Card) */}
-        <div className="flex-1 flex flex-col justify-between items-center px-4 h-full">
-          {/* Top Map Action Bar */}
-          <div className="pointer-events-auto">
-            <MapControls 
-              mapLayer={mapLayer}
-              onToggleLayer={setMapLayer}
-              showIncidentZones={showIncidentZones}
-              onToggleIncidents={() => setShowIncidentZones(!showIncidentZones)}
-              showRoutes={showRoutes}
-              onToggleRoutes={() => setShowRoutes(!showRoutes)}
-              onRecenter={handleRecenter}
+          {/* Center Panel: Large Live Disaster Map (~50-55% Width, Clear & Unobstructed) */}
+          <LiveDisasterMap 
+            telemetry={telemetry}
+            checkpoints={CHECKPOINTS_LIST}
+            flightRoutes={FLIGHT_ROUTES}
+            survivors={SURVIVORS_DATA}
+            hazards={HAZARDS_DATA}
+            heatmapZones={RISK_HEATMAP_ZONES}
+            isOfflineMode={isOfflineMode}
+          />
+
+          {/* Right Panel: Dedicated Rescue Intelligence (320px) */}
+          <RescueIntelligence 
+            detections={RESCUE_INTELLIGENCE_ITEMS}
+          />
+        </section>
+
+        {/* MIDDLE ROW: LIVE CAMERA & AI FEED (Full Lower-Middle Row with RGB, Thermal, and Sensor Fusion) */}
+        <section className="shrink-0">
+          <LiveCameraFeeds 
+            fusionData={SENSOR_FUSION_DATA}
+          />
+        </section>
+
+        {/* BOTTOM ROW: COMMUNICATION & OFFLINE (1fr) + MISSION EVENTS (1.2fr) + MISSION CONTROLS (1fr) */}
+        <section className="h-[148px] shrink-0 grid grid-cols-1 md:grid-cols-12 gap-2.5">
+          {/* Communication & Offline Backtracking (Cols 1-4) */}
+          <div className="md:col-span-4 h-full">
+            <CommunicationPanel 
+              commData={COMMUNICATION_STATE}
+              isOfflineMode={isOfflineMode}
+              onToggleOffline={handleToggleOffline}
             />
           </div>
 
-          {/* Bottom Selected Drone Detail Card */}
-          <div className="pointer-events-auto w-full max-w-[760px] pb-1">
-            <SelectedDroneCard drone={selectedDrone} />
-          </div>
-        </div>
-
-        {/* RIGHT FLOATING ALERTS & ANALYTICS COLUMN */}
-        <div className="pointer-events-auto h-full flex flex-col justify-between space-y-3">
-          <div className="flex-1 min-h-0">
-            <RightAlertsPanel 
-              alerts={ACTIVE_ALERTS}
-              aiIntelligence={AI_INTELLIGENCE}
+          {/* Mission Events Chronological Timeline (Cols 5-8) */}
+          <div className="md:col-span-4 lg:col-span-5 h-full">
+            <MissionEvents 
+              events={missionEvents}
             />
           </div>
-          
-          {/* Bottom Right Analytics Summary Strip */}
-          <div className="shrink-0">
-            <BottomAnalytics fleetSummary={FLEET_SUMMARY} />
+
+          {/* Mission Controls (Cols 9-12) */}
+          <div className="md:col-span-4 lg:col-span-3 h-full">
+            <MissionControls 
+              onActionTrigger={handleActionTrigger}
+              isOfflineMode={isOfflineMode}
+              onToggleOffline={handleToggleOffline}
+            />
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
+
+      {/* 3. SLIM PERSISTENT STATUS BAR */}
+      <BottomStatusBar 
+        telemetry={telemetry}
+        isOfflineMode={isOfflineMode}
+      />
     </div>
   );
 }

@@ -13,42 +13,30 @@
     margin: 0;
     padding: 0;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background-color: #080A0C;
-    color: #F1F3F2;
-    height: 100vh;
-    width: 100vw;
-    overflow: hidden;
+    background-color: #070909;
+    color: #F2F4F3;
+    overflow-x: hidden;
     letter-spacing: -0.01em;
   }
 }
 
-/* Glassmorphic Panel Styling */
-.aeris-glass-panel {
-  background: rgba(18, 22, 24, 0.82);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+/* Aeris Panel Styling (90% dark neutral, crisp borders, 0 excess glass blur) */
+.aeris-panel-container {
+  background-color: #111516;
   border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 
-.aeris-glass-card {
-  background: rgba(22, 26, 28, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+.aeris-surface-card {
+  background-color: #181D1E;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 10px;
+  transition: all 0.2s ease;
 }
 
-.aeris-glass-card:hover {
-  transform: translateY(-2px);
+.aeris-surface-card:hover {
   border-color: rgba(255, 255, 255, 0.12);
-}
-
-/* Alert Tinted Card */
-.aeris-alert-card {
-  background: linear-gradient(135deg, rgba(38, 20, 20, 0.85) 0%, rgba(22, 26, 28, 0.9) 100%);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 59, 48, 0.2);
 }
 
 /* Custom Minimal Scrollbar */
@@ -58,47 +46,48 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #0B0E0F;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.22);
 }
 
-/* Map Styling & Dark Satellite Inversion / Contrast */
+/* Leaflet Satellite Map Dark Grading */
 .leaflet-container {
-  background-color: #080A0C !important;
+  background-color: #070909 !important;
   font-family: 'Inter', sans-serif !important;
+  border-radius: 12px;
 }
 
-.satellite-map-tiles {
-  filter: brightness(0.68) contrast(1.15) saturate(0.85);
+.dark-satellite-tiles {
+  filter: brightness(0.72) contrast(1.18) saturate(0.85);
 }
 
 .dark-terrain-tiles {
-  filter: brightness(0.7) contrast(1.2) hue-rotate(190deg) saturate(0.4);
+  filter: brightness(0.65) contrast(1.2) hue-rotate(195deg) saturate(0.35);
 }
 
-/* Pulse animation */
-@keyframes soft-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.08); opacity: 0.75; }
-}
-
-.animate-soft-pulse {
-  animation: soft-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
+/* Pulse & Ping Keyframes */
 @keyframes ping-subtle {
   0% { transform: scale(1); opacity: 0.8; }
   80%, 100% { transform: scale(2.2); opacity: 0; }
 }
 
 .animate-ping-subtle {
-  animation: ping-subtle 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+  animation: ping-subtle 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-radar {
+  animation: radar-sweep 4s linear infinite;
 }

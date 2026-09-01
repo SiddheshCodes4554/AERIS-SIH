@@ -8,26 +8,23 @@ export default {
     extend: {
       colors: {
         aeris: {
-          bg: '#080A0C',
-          surface1: '#101315',
-          surface2: '#15191B',
-          surface3: '#1B2022',
-          card: 'rgba(22, 26, 28, 0.88)',
-          cardSubtle: 'rgba(18, 22, 24, 0.82)',
-          cardAlert: 'rgba(38, 20, 20, 0.75)',
-          border: 'rgba(255, 255, 255, 0.06)',
-          borderHover: 'rgba(255, 255, 255, 0.12)',
-          borderActive: 'rgba(255, 255, 255, 0.20)',
+          bg: '#070909',
+          panel: '#111516',
+          surface: '#181D1E',
+          surfaceHover: '#202628',
+          border: 'rgba(255, 255, 255, 0.07)',
+          borderLight: 'rgba(255, 255, 255, 0.12)',
           
-          textPrimary: '#F1F3F2',
-          textSecondary: '#9A9F9D',
-          textMuted: '#656B69',
+          textPrimary: '#F2F4F3',
+          textSecondary: '#8C9492',
+          textMuted: '#58605E',
 
-          // Status & Accent Colors
-          green: '#65C466',
-          amber: '#D99A4A',
-          red: '#FF3B30',
+          // Status & Intelligence Accents
+          green: '#62C370',
           blue: '#3B8EDB',
+          amber: '#E2A24C',
+          red: '#FF453A',
+          purple: '#9B7EDB',
           cyan: '#00E5FF',
         }
       },
@@ -36,15 +33,15 @@ export default {
         mono: ['"JetBrains Mono"', 'Consolas', 'monospace'],
       },
       boxShadow: {
-        'aeris-card': '0 20px 60px rgba(0, 0, 0, 0.45)',
-        'aeris-glow-blue': '0 0 20px rgba(59, 142, 219, 0.25)',
-        'aeris-glow-green': '0 0 20px rgba(101, 196, 102, 0.25)',
-        'aeris-glow-amber': '0 0 20px rgba(217, 154, 74, 0.25)',
-        'aeris-glow-red': '0 0 20px rgba(255, 59, 48, 0.25)',
+        'aeris-panel': '0 10px 30px rgba(0, 0, 0, 0.5)',
+        'glow-green': '0 0 12px rgba(98, 195, 112, 0.35)',
+        'glow-blue': '0 0 12px rgba(59, 142, 219, 0.35)',
+        'glow-amber': '0 0 12px rgba(226, 162, 76, 0.35)',
+        'glow-red': '0 0 12px rgba(255, 69, 58, 0.35)',
       },
       borderRadius: {
-        'card': '24px',
-        'panel': '28px',
+        'panel': '16px',
+        'card': '12px',
         'pill': '9999px',
       }
     },
