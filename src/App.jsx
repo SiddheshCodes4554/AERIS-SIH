@@ -1,4 +1,8 @@
 import React, { useState } from 'react';
+import Navigation from './components/Navigation.jsx';
+import IncidentResponseView from './components/incidents/IncidentResponseView.jsx';
+
+// Live Operations Components
 import Header from './components/Header.jsx';
 import MissionTelemetry from './components/MissionTelemetry.jsx';
 import LiveDisasterMap from './components/LiveDisasterMap.jsx';
@@ -21,11 +25,11 @@ import {
 } from './data/mockData.js';
 
 export default function App() {
-  const [simulationMode, setSimulationMode] = useState('NORMAL'); // 'NORMAL' | 'DETECTION' | 'SIGNAL_LOSS' | 'BACKTRACKING' | 'RECONNECTED'
+  const [activeTab, setActiveTab] = useState('incidents'); // 'incidents' | 'live-operations' | 'fleet' | 'analytics' | 'history'
+  const [simulationMode, setSimulationMode] = useState('NORMAL');
   const [missionState, setMissionState] = useState(INITIAL_MISSION_STATE);
   const [eventLog, setEventLog] = useState(CHRONOLOGICAL_EVENTS);
 
-  // Handle Scenario Transitions
   const handleSetSimulationMode = (mode) => {
     setSimulationMode(mode);
     const now = new Date().toISOString().substring(11, 19);
@@ -95,94 +99,100 @@ export default function App() {
   const isBacktracking = simulationMode === 'BACKTRACKING';
 
   return (
-    <div className="h-screen w-screen bg-[#070909] text-aeris-textPrimary flex flex-col overflow-hidden font-sans select-none">
-      {/* 1. TOP HEADER (56px) */}
-      <Header 
-        missionState={missionState}
-        simulationMode={simulationMode}
-        onSetSimulationMode={handleSetSimulationMode}
+    <div className="h-screen w-screen bg-[#07090B] text-[#E8ECEF] flex flex-col overflow-hidden font-sans select-none">
+      {/* 1. TOP GLOBAL AERIS NAVIGATION BAR */}
+      <Navigation 
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
       />
 
-      {/* 2. MAIN DASHBOARD WORKSPACE (Exact Layout from Prompt 2) */}
-      <main className="flex-1 p-2 flex flex-col gap-2 min-h-0 overflow-hidden">
-        {/* ========================================================================= */}
-        {/* UPPER ROW (70% Height): MISSION STATUS | LIVE MAP | LIVE AI CAMERA        */}
-        {/* ========================================================================= */}
-        <section className="flex-[7] min-h-0 grid grid-cols-12 gap-2">
-          {/* Left: Mission Status + Telemetry (Col 1-3 / ~25% Width) */}
-          <div className="col-span-3 h-full min-h-0">
-            <MissionTelemetry 
-              missionState={missionState}
-              isOffline={isOffline}
-              isBacktracking={isBacktracking}
-            />
-          </div>
+      {/* 2. MAIN APPLICATION VIEWS */}
+      {activeTab === 'incidents' ? (
+        /* INCIDENT RESPONSE & AI ALERT MANAGEMENT VIEW */
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <IncidentResponseView />
+        </div>
+      ) : (
+        /* LIVE OPERATIONS & MISSION DISASTER COMMAND VIEW */
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Sub Header for Live Operations */}
+          <Header 
+            missionState={missionState}
+            simulationMode={simulationMode}
+            onSetSimulationMode={handleSetSimulationMode}
+          />
 
-          {/* Center: Dominant Live Mission Map (Col 4-9 / ~50% Width, 50-60% of Screen) */}
-          <div className="col-span-6 h-full min-h-0 shadow-2xl">
-            <LiveDisasterMap 
-              missionState={missionState}
-              checkpoints={CHECKPOINTS_ROUTE}
-              flightPaths={FLIGHT_PATHS}
-              survivors={SURVIVORS_LIST}
-              hazards={HAZARDS_LIST}
-              heatmapData={RISK_HEATMAP_DATA}
-              isOffline={isOffline}
-              isBacktracking={isBacktracking}
-            />
-          </div>
+          {/* Main Dashboard Workspace */}
+          <main className="flex-1 p-2 flex flex-col gap-2 min-h-0 overflow-hidden">
+            {/* Upper Operations Row */}
+            <section className="flex-[7] min-h-0 grid grid-cols-12 gap-2">
+              <div className="col-span-3 h-full min-h-0">
+                <MissionTelemetry 
+                  missionState={missionState}
+                  isOffline={isOffline}
+                  isBacktracking={isBacktracking}
+                />
+              </div>
 
-          {/* Right: Live AI Camera (RGB / Thermal / AI Overlay) (Col 10-12 / ~25% Width) */}
-          <div className="col-span-3 h-full min-h-0">
-            <LiveAICameraFeed 
-              missionState={missionState}
-            />
-          </div>
-        </section>
+              <div className="col-span-6 h-full min-h-0 shadow-2xl">
+                <LiveDisasterMap 
+                  missionState={missionState}
+                  checkpoints={CHECKPOINTS_ROUTE}
+                  flightPaths={FLIGHT_PATHS}
+                  survivors={SURVIVORS_LIST}
+                  hazards={HAZARDS_LIST}
+                  heatmapData={RISK_HEATMAP_DATA}
+                  isOffline={isOffline}
+                  isBacktracking={isBacktracking}
+                />
+              </div>
 
-        {/* ========================================================================= */}
-        {/* LOWER ROW (30% Height): EVENT LOG | AI DETECTIONS | RISK HEATMAP | CONTROLS*/}
-        {/* ========================================================================= */}
-        <section className="flex-[3] min-h-0 grid grid-cols-12 gap-2">
-          {/* Col 1-4 (33%): Live Chronological Event Log */}
-          <div className="col-span-4 h-full min-h-0">
-            <LiveEventLog 
-              events={eventLog}
-            />
-          </div>
+              <div className="col-span-3 h-full min-h-0">
+                <LiveAICameraFeed 
+                  missionState={missionState}
+                />
+              </div>
+            </section>
 
-          {/* Col 5-7 (25%): AI Detections Stream */}
-          <div className="col-span-3 h-full min-h-0">
-            <AIDetectionsPanel 
-              detections={AI_DETECTIONS_LOG}
-            />
-          </div>
+            {/* Lower Diagnostics & Events Row */}
+            <section className="flex-[3] min-h-0 grid grid-cols-12 gap-2">
+              <div className="col-span-4 h-full min-h-0">
+                <LiveEventLog 
+                  events={eventLog}
+                />
+              </div>
 
-          {/* Col 8-10 (25%): Risk Heatmap & Multi-Sensor Fusion */}
-          <div className="col-span-3 h-full min-h-0">
-            <RiskHeatmapStatus />
-          </div>
+              <div className="col-span-3 h-full min-h-0">
+                <AIDetectionsPanel 
+                  detections={AI_DETECTIONS_LOG}
+                />
+              </div>
 
-          {/* Col 11-12 (17%): Mission Action Controls & Emergency Override */}
-          <div className="col-span-2 h-full min-h-0">
-            <MissionControlPanel 
-              onActionTrigger={handleActionTrigger}
-            />
-          </div>
-        </section>
-      </main>
+              <div className="col-span-3 h-full min-h-0">
+                <RiskHeatmapStatus />
+              </div>
 
-      {/* 3. SLIM PERSISTENT STATUS BAR (28px) */}
-      <BottomStatusBar 
-        telemetry={{
-          droneId: missionState.droneId,
-          checkpoints: { currentId: missionState.checkpoint, total: 5 },
-          flightMode: missionState.flightMode,
-          position: { altitudeAgl: missionState.altitude, groundSpeed: missionState.speed },
-          battery: { percentage: missionState.battery }
-        }}
-        isOfflineMode={isOffline || isBacktracking}
-      />
+              <div className="col-span-2 h-full min-h-0">
+                <MissionControlPanel 
+                  onActionTrigger={handleActionTrigger}
+                />
+              </div>
+            </section>
+          </main>
+
+          {/* Persistent Status Bar */}
+          <BottomStatusBar 
+            telemetry={{
+              droneId: missionState.droneId,
+              checkpoints: { currentId: missionState.checkpoint, total: 5 },
+              flightMode: missionState.flightMode,
+              position: { altitudeAgl: missionState.altitude, groundSpeed: missionState.speed },
+              battery: { percentage: missionState.battery }
+            }}
+            isOfflineMode={isOffline || isBacktracking}
+          />
+        </div>
+      )}
     </div>
   );
 }
