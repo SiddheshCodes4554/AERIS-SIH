@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import Navigation from './components/Navigation.jsx';
-import MissionIntelligenceView from './components/analytics/MissionIntelligenceView.jsx';
+import AERIS01OperationsView from './components/operations/AERIS01OperationsView.jsx';
 import IncidentResponseView from './components/incidents/IncidentResponseView.jsx';
+import MissionIntelligenceView from './components/analytics/MissionIntelligenceView.jsx';
 
 // Live Operations Components
 import Header from './components/Header.jsx';
@@ -26,7 +27,7 @@ import {
 } from './data/mockData.js';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('intelligence'); // 'intelligence' | 'incidents' | 'command-center' | 'live-mission' | 'fleet' | 'analytics'
+  const [activeTab, setActiveTab] = useState('aeris01-operations'); // 'aeris01-operations' | 'live-mission' | 'incidents' | 'intelligence'
   const [simulationMode, setSimulationMode] = useState('NORMAL');
   const [missionState, setMissionState] = useState(INITIAL_MISSION_STATE);
   const [eventLog, setEventLog] = useState(CHRONOLOGICAL_EVENTS);
@@ -100,26 +101,31 @@ export default function App() {
   const isBacktracking = simulationMode === 'BACKTRACKING';
 
   return (
-    <div className="h-screen w-screen bg-[#07090B] text-[#E8ECEF] flex flex-col overflow-hidden font-sans select-none">
+    <div className="h-screen w-screen bg-[#070909] text-[#F2F4F3] flex flex-col overflow-hidden font-sans select-none">
       {/* 1. TOP GLOBAL AERIS NAVIGATION BAR */}
       <Navigation 
         activeTab={activeTab}
         onSelectTab={setActiveTab}
       />
 
-      {/* 2. MAIN APPLICATION VIEWS ROUTING */}
-      {activeTab === 'intelligence' || activeTab === 'analytics' ? (
-        /* PROMPT 6: MISSION INTELLIGENCE & ANALYTICS DASHBOARD */
+      {/* 2. MAIN APPLICATION VIEWS */}
+      {activeTab === 'aeris01-operations' ? (
+        /* AERIS-01 SYSTEM OPERATIONS & UAV HEALTH VIEW */
         <div className="flex-1 min-h-0 overflow-hidden">
-          <MissionIntelligenceView />
+          <AERIS01OperationsView />
         </div>
       ) : activeTab === 'incidents' ? (
-        /* PROMPT 5: INCIDENT RESPONSE & AI ALERT MANAGEMENT */
+        /* INCIDENT RESPONSE & AI ALERT MANAGEMENT VIEW */
         <div className="flex-1 min-h-0 overflow-hidden">
           <IncidentResponseView />
         </div>
+      ) : activeTab === 'intelligence' ? (
+        /* MISSION INTELLIGENCE & SATELLITE HEATMAP VIEW */
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <MissionIntelligenceView />
+        </div>
       ) : (
-        /* PROMPT 1-4: LIVE MISSION DISASTER RESPONSE OPERATIONS */
+        /* LIVE MISSION DISASTER RESPONSE COMMAND CENTER VIEW */
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <Header 
             missionState={missionState}

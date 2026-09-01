@@ -1,28 +1,23 @@
 import React from 'react';
 import { 
-  ShieldAlert, 
-  Wifi, 
-  Radio, 
-  Bell, 
-  User, 
   Activity, 
-  Layers, 
   Compass, 
-  FileText, 
-  Cpu,
-  BarChart3,
-  Search,
-  Sparkles
+  ShieldAlert, 
+  Sparkles, 
+  Cpu, 
+  Wifi, 
+  Bell, 
+  User,
+  Radio,
+  Sliders
 } from 'lucide-react';
 
 export default function Navigation({ activeTab, onSelectTab }) {
   const navItems = [
-    { id: 'command-center', label: 'Command Center', icon: Activity },
-    { id: 'live-mission', label: 'Live Mission', icon: Compass },
-    { id: 'intelligence', label: 'Intelligence', icon: Sparkles, badge: 'AI' },
+    { id: 'aeris01-operations', label: 'AERIS-01 Operations', icon: Sliders, badge: 'HEALTH' },
+    { id: 'live-mission', label: 'Live Mission Command', icon: Compass },
     { id: 'incidents', label: 'Incidents / Alerts', icon: ShieldAlert, badge: '3' },
-    { id: 'fleet', label: 'Fleet', icon: Layers },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'intelligence', label: 'Mission Intelligence', icon: Sparkles, badge: 'AI' },
   ];
 
   return (
@@ -31,7 +26,7 @@ export default function Navigation({ activeTab, onSelectTab }) {
       <div className="flex items-center space-x-5">
         <div 
           className="flex items-center space-x-2.5 cursor-pointer" 
-          onClick={() => onSelectTab('command-center')}
+          onClick={() => onSelectTab('aeris01-operations')}
         >
           <div className="w-8 h-8 rounded-lg bg-[#15191C] border border-white/10 flex items-center justify-center shadow-inner">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -40,16 +35,21 @@ export default function Navigation({ activeTab, onSelectTab }) {
             </svg>
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold tracking-[0.14em] text-[#E8ECEF]">
-              AERIS
-            </span>
-            <span className="text-[8px] uppercase tracking-[0.08em] text-[#8B949E] leading-none">
-              AUTONOMOUS COMMAND
+            <div className="flex items-center space-x-1.5">
+              <span className="text-sm font-semibold tracking-[0.14em] text-[#E8ECEF]">
+                AERIS
+              </span>
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#3B9EFF]/15 text-[#3B9EFF] border border-[#3B9EFF]/30 font-bold">
+                AERIS-01
+              </span>
+            </div>
+            <span className="text-[8px] uppercase tracking-[0.08em] text-[#8B949E] leading-none mt-0.5">
+              Autonomous Disaster Response UAV
             </span>
           </div>
         </div>
 
-        {/* 2. Top Nav Items (Subtle rounded dark pill style) */}
+        {/* 2. Top Nav Items (Dedicated single drone UAV views) */}
         <div className="hidden md:flex items-center space-x-1 p-0.5 rounded-pill bg-[#15191C] border border-white/5 text-[11px] font-mono">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -67,12 +67,12 @@ export default function Navigation({ activeTab, onSelectTab }) {
                 <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#3B9EFF]' : 'text-[#8B949E]'}`} />
                 <span>{item.label}</span>
                 {item.badge && (
-                  <span className={`text-[8.5px] px-1.5 py-0.2 rounded-full font-bold ${
-                    item.badge === 'AI' 
-                      ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
-                      : isActive 
-                        ? 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30' 
-                        : 'bg-white/10 text-[#8B949E]'
+                  <span className={`text-[8px] px-1.5 py-0.2 rounded-full font-bold ${
+                    item.badge === 'HEALTH'
+                      ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
+                      : item.badge === 'AI' 
+                        ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
+                        : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
                   }`}>
                     {item.badge}
                   </span>
@@ -83,39 +83,35 @@ export default function Navigation({ activeTab, onSelectTab }) {
         </div>
       </div>
 
-      {/* 3. Right: Search, System Status, Notifications & Profile */}
-      <div className="flex items-center space-x-2.5 text-xs font-mono">
-        {/* Search */}
-        <div className="hidden xl:flex items-center space-x-1.5 px-2.5 py-1 rounded-pill bg-[#15191C] border border-white/5 text-[#8B949E]">
-          <Search className="w-3 h-3 text-[#8B949E]" />
-          <input 
-            type="text" 
-            placeholder="Search zones, drones, alerts..." 
-            className="bg-transparent text-[10px] text-[#E8ECEF] placeholder-[#8B949E] focus:outline-none w-36"
-          />
-        </div>
-
-        {/* System Status: Subtle Green */}
+      {/* 3. Right: System Status, Mesh Link & Profile */}
+      <div className="flex items-center space-x-3 text-xs font-mono">
+        {/* System Status */}
         <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-pill bg-[#15191C] border border-white/5 text-[#E8ECEF]">
           <span className="w-1.5 h-1.5 rounded-full bg-[#63C174] shadow-[0_0_8px_rgba(99,193,116,0.6)]"></span>
-          <span className="text-[10px] tracking-wider text-[#8B949E] hidden sm:inline">STATUS:</span>
-          <span className="text-[10px] font-bold text-[#63C174]">● OPERATIONAL</span>
+          <span className="text-[10px] tracking-wider text-[#8B949E] hidden sm:inline">UAV-01:</span>
+          <span className="text-[10px] font-bold text-[#63C174]">● NOMINAL</span>
         </div>
 
-        {/* Notifications with Alert Badge */}
+        {/* 5.8 GHz Mesh Ground Link */}
+        <div className="hidden sm:flex items-center space-x-1 px-2 py-1 rounded-pill bg-[#15191C] border border-white/5 text-[#8B949E]" title="Mesh Ground Link Active">
+          <Wifi className="w-3.5 h-3.5 text-[#3B9EFF]" />
+          <span className="text-[10px] text-[#3B9EFF]">5.8 GHz</span>
+        </div>
+
+        {/* Alert Notifications */}
         <button className="relative p-1.5 rounded-pill bg-[#15191C] border border-white/5 text-[#8B949E] hover:text-[#E8ECEF] transition-colors">
           <Bell className="w-3.5 h-3.5" />
-          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#FF4D3D] shadow-[0_0_4px_#FF4D3D]"></span>
+          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#FF4D3D]"></span>
         </button>
 
         {/* Operator Profile */}
-        <div className="flex items-center space-x-2 pl-1.5 border-l border-white/5">
+        <div className="flex items-center space-x-2 pl-2 border-l border-white/5">
           <div className="w-7 h-7 rounded-full bg-[#1C2125] border border-white/10 flex items-center justify-center text-[#E8ECEF]">
             <User className="w-3.5 h-3.5 text-[#3B9EFF]" />
           </div>
           <div className="hidden lg:flex flex-col text-left">
             <span className="text-[10.5px] font-semibold text-[#E8ECEF] leading-tight">CMD. SIDDHESH</span>
-            <span className="text-[8px] text-[#8B949E] leading-tight">AERIS OP-01</span>
+            <span className="text-[8px] text-[#8B949E] leading-tight">AERIS-01 OP</span>
           </div>
         </div>
       </div>
