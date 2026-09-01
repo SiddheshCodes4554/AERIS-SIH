@@ -1,8 +1,13 @@
 import React from 'react';
 
-export default function BottomStatusBar({ telemetry, isOfflineMode }) {
-  const alt = String(telemetry.position.altitudeAgl || '42.5').replace('m', '');
-  const spd = String(telemetry.position.groundSpeed || '8.5').replace('m/s', '').trim();
+export default function BottomStatusBar({ telemetry, isOfflineMode, deviceLocation, locationStatus }) {
+  const alt = String(telemetry?.position?.altitudeAgl || '42.5').replace('m', '');
+  const spd = String(telemetry?.position?.groundSpeed || '8.5').replace('m/s', '').trim();
+
+  const hasCoords = deviceLocation && deviceLocation.latitude && deviceLocation.longitude;
+  const locDisplay = hasCoords
+    ? `${deviceLocation.latitude.toFixed(5)}, ${deviceLocation.longitude.toFixed(5)} (±${Math.round(deviceLocation.accuracy || 25)}m)`
+    : (locationStatus || 'ACQUIRING LOCATION');
 
   return (
     <footer className="h-7 bg-[#090C0D] border-t border-aeris-border px-4 flex items-center justify-between text-[10px] font-mono select-none text-aeris-textSecondary shrink-0 z-20">
@@ -12,19 +17,19 @@ export default function BottomStatusBar({ telemetry, isOfflineMode }) {
           <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
             isOfflineMode ? 'bg-aeris-amber animate-pulse' : 'bg-aeris-green shadow-glow-green'
           }`}></span>
-          {telemetry.droneId} {isOfflineMode ? '● OFFLINE' : '● ONLINE'}
+          {telemetry?.droneId || 'AERIS-01'} {isOfflineMode ? '● OFFLINE' : '● ONLINE'}
         </span>
 
         <span className="text-aeris-textMuted">|</span>
 
         <span>
-          CP: <strong className="text-aeris-cyan">{telemetry.checkpoints.currentId} / {telemetry.checkpoints.total}</strong>
+          LOCATION: <strong className={hasCoords ? 'text-aeris-cyan' : 'text-aeris-amber'}>{locDisplay}</strong>
         </span>
 
         <span className="text-aeris-textMuted">|</span>
 
         <span>
-          MODE: <strong className="text-aeris-textPrimary">{telemetry.flightMode}</strong>
+          SOURCE: <strong className="text-aeris-green font-bold">DEVICE LOCATION</strong>
         </span>
 
         <span className="text-aeris-textMuted">|</span>
@@ -43,21 +48,21 @@ export default function BottomStatusBar({ telemetry, isOfflineMode }) {
       {/* Right items */}
       <div className="flex items-center space-x-2.5">
         <span>
-          BATTERY: <strong className={telemetry.battery.percentage > 50 ? 'text-aeris-green' : 'text-aeris-amber'}>
-            {telemetry.battery.percentage}%
+          BATTERY: <strong className={(telemetry?.battery?.percentage || 85) > 50 ? 'text-aeris-green' : 'text-aeris-amber'}>
+            {telemetry?.battery?.percentage || 85}%
           </strong>
         </span>
 
         <span className="text-aeris-textMuted">|</span>
 
-        <span className="text-aeris-green font-medium">
-          GPS RTK FIXED
+        <span className={hasCoords ? 'text-aeris-green font-medium' : 'text-aeris-amber font-medium'}>
+          {hasCoords ? '● GPS FIX' : '● LOCATING'}
         </span>
 
         <span className="text-aeris-textMuted">|</span>
 
         <span className="text-aeris-cyan font-medium">
-          AI ACTIVE
+          YOLO ACTIVE
         </span>
 
         <span className="text-aeris-textMuted">|</span>

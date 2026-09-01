@@ -11,12 +11,24 @@ import {
   Cpu, 
   HardDrive, 
   RotateCcw, 
-  Wifi
+  Wifi,
+  Navigation
 } from 'lucide-react';
 
-export default function MissionTelemetry({ missionState, isOffline, isBacktracking }) {
+export default function MissionTelemetry({ 
+  missionState = {}, 
+  deviceLocation = null,
+  locationStatus = 'ACQUIRING',
+  isOffline, 
+  isBacktracking 
+}) {
   const speedNum = parseFloat(missionState.speed) || 8.5;
   const altitudeNum = parseFloat(missionState.altitude) || 42.5;
+
+  const hasCoords = deviceLocation && deviceLocation.latitude && deviceLocation.longitude;
+  const latStr = hasCoords ? deviceLocation.latitude.toFixed(6) : '--.------';
+  const lngStr = hasCoords ? deviceLocation.longitude.toFixed(6) : '--.------';
+  const accStr = hasCoords && deviceLocation.accuracy ? `±${Math.round(deviceLocation.accuracy)} m` : '-- m';
 
   return (
     <div className="w-full h-full aeris-panel-container p-3 flex flex-col justify-between select-none font-sans overflow-hidden">
@@ -26,21 +38,47 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
           <div className="flex items-center space-x-1.5">
             <Activity className="w-3.5 h-3.5 text-aeris-cyan" />
             <h2 className="text-[11px] font-semibold uppercase tracking-wider font-mono text-aeris-textPrimary">
-              Mission & Telemetry
+              Telemetry & Location
             </h2>
           </div>
           <span className="text-[9px] font-mono px-2 py-0.2 rounded bg-aeris-blue/15 text-aeris-blue border border-aeris-blue/30 font-medium">
-            {missionState.droneId}
+            {missionState.droneId || 'AERIS-01'}
           </span>
         </div>
 
-        {/* Mission Status Header Strip */}
-        <div className="flex items-center justify-between text-[10px] font-mono text-aeris-textSecondary mb-2 px-1">
-          <span>MISSION: <strong className="text-aeris-textPrimary">{(missionState.missionName || 'Flood').split(' ')[0]}</strong></span>
-          <span className="text-aeris-green font-bold flex items-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-aeris-green mr-1 shadow-glow-green"></span>
-            ACTIVE
-          </span>
+        {/* Real Device Location Card */}
+        <div className="aeris-surface-card p-2.5 mb-2 font-mono border-l-2 border-l-aeris-cyan">
+          <div className="flex items-center justify-between text-[9.5px] text-aeris-textSecondary mb-1">
+            <span className="flex items-center text-aeris-cyan font-bold">
+              <MapPin className="w-3 h-3 mr-1" />
+              LOCATION
+            </span>
+            <span className={`text-[8.5px] font-bold px-1.5 py-0.2 rounded ${
+              locationStatus === 'ACTIVE'
+                ? 'bg-aeris-green/20 text-aeris-green border border-aeris-green/30'
+                : locationStatus === 'DENIED'
+                ? 'bg-aeris-red/20 text-aeris-red border border-aeris-red/30'
+                : 'bg-aeris-amber/20 text-aeris-amber border border-aeris-amber/30 animate-pulse'
+            }`}>
+              ● {locationStatus}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1 text-[10px] my-1">
+            <div>
+              <span className="text-[8px] text-aeris-textMuted block">LATITUDE</span>
+              <strong className="text-[#F2F4F3]">{latStr}</strong>
+            </div>
+            <div>
+              <span className="text-[8px] text-aeris-textMuted block">LONGITUDE</span>
+              <strong className="text-[#F2F4F3]">{lngStr}</strong>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-[8.5px] text-aeris-textMuted pt-1 border-t border-white/5">
+            <span>Accuracy: <strong className="text-aeris-cyan font-bold">{accStr}</strong></span>
+            <span className="text-aeris-green font-bold">DEVICE LOCATION</span>
+          </div>
         </div>
 
         {/* 2. Battery Status */}
@@ -52,7 +90,7 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
 
           <div className="flex items-baseline space-x-1.5 mb-1">
             <span className="text-2xl font-light text-aeris-green tracking-tight">
-              {missionState.battery}%
+              {missionState.battery || 82}%
             </span>
             <span className="text-[9px] text-aeris-textMuted font-sans">
               21.8 V • 31.4°C
@@ -63,7 +101,7 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
           <div className="w-full bg-[#0B0E0F] h-1.5 rounded-full overflow-hidden">
             <div 
               className="bg-aeris-green h-full rounded-full transition-all duration-500 shadow-glow-green" 
-              style={{ width: `${missionState.battery}%` }}
+              style={{ width: `${missionState.battery || 82}%` }}
             />
           </div>
         </div>
@@ -86,30 +124,9 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
             <span className="text-[8.5px] text-aeris-textMuted block">{(speedNum * 3.6).toFixed(1)} km/h</span>
           </div>
         </div>
-
-        {/* 4. Navigation & Mission Progress */}
-        <div className="aeris-surface-card p-2 font-mono mb-2">
-          <div className="flex justify-between items-center text-[9.5px] mb-1">
-            <span className="text-aeris-textSecondary">GPS: <strong className="text-aeris-green">RTK FIXED (18 Sats)</strong></span>
-            <span className="text-aeris-cyan font-bold">{missionState.missionProgress}%</span>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="w-full bg-[#0B0E0F] h-1 rounded-full overflow-hidden mb-1.5">
-            <div 
-              className="bg-aeris-cyan h-full rounded-full transition-all duration-500 shadow-glow-blue" 
-              style={{ width: `${missionState.missionProgress}%` }}
-            />
-          </div>
-
-          <div className="flex justify-between text-[9px] text-aeris-textMuted pt-0.5 border-t border-white/5">
-            <span>CUR: <strong className="text-aeris-textPrimary">{missionState.checkpoint}</strong></span>
-            <span>NEXT: <strong className="text-aeris-blue">{missionState.nextCheckpoint || 'CP-04'}</strong> ({missionState.nextDistanceKm || 1.2} km)</span>
-          </div>
-        </div>
       </div>
 
-      {/* 5. OFFLINE & AUTONOMOUS BACKTRACKING PANEL (Dynamic Operational State) */}
+      {/* 4. OFFLINE & AUTONOMOUS BACKTRACKING PANEL */}
       <div className={`p-2.5 rounded-card border font-mono transition-all ${
         isOffline || isBacktracking
           ? 'bg-aeris-amber/15 border-aeris-amber/50 shadow-glow-amber animate-pulse'
@@ -125,7 +142,6 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
           </span>
         </div>
 
-        {/* Telemetry Parameters when Offline */}
         <div className="space-y-1 text-[9px] text-aeris-textSecondary pt-1 border-t border-white/10">
           <div className="flex justify-between">
             <span>Local AI Inference:</span>
@@ -134,36 +150,14 @@ export default function MissionTelemetry({ missionState, isOffline, isBacktracki
           <div className="flex justify-between">
             <span>Data Buffer:</span>
             <strong className={isOffline || isBacktracking ? 'text-aeris-amber font-bold' : 'text-aeris-textPrimary'}>
-              {isOffline || isBacktracking ? `${missionState.bufferedEventsCount} Events` : '0 Events (Synced)'}
+              {isOffline || isBacktracking ? `${missionState.bufferedEventsCount || 18} Events` : '0 Events (Synced)'}
             </strong>
           </div>
           <div className="flex justify-between">
             <span>Last Connected:</span>
-            <strong className="text-aeris-green font-bold">{missionState.lastConnectedCheckpoint}</strong>
+            <strong className="text-aeris-green font-bold">{missionState.lastConnectedCheckpoint || 'CP-03'}</strong>
           </div>
-          {(isOffline || isBacktracking) && (
-            <div className="flex justify-between text-aeris-amber font-bold pt-0.5">
-              <span>Signal Lost:</span>
-              <span>{missionState.signalLostTime}</span>
-            </div>
-          )}
         </div>
-
-        {/* Backtracking Progress Bar when active */}
-        {isBacktracking && (
-          <div className="mt-2 pt-1.5 border-t border-aeris-amber/30">
-            <div className="flex justify-between text-[8.5px] text-aeris-amber font-bold mb-0.5">
-              <span>RETURNING TO {missionState.lastConnectedCheckpoint}</span>
-              <span>{missionState.backtrackingProgress}%</span>
-            </div>
-            <div className="w-full bg-[#0B0E0F] h-1.5 rounded-full overflow-hidden">
-              <div 
-                className="bg-aeris-amber h-full rounded-full transition-all duration-300"
-                style={{ width: `${missionState.backtrackingProgress}%` }}
-              />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

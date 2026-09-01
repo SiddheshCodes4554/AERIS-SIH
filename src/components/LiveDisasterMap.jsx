@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Polygon, Circle, Tooltip, useMap } from 'react-leaflet';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { 
   Navigation, 
@@ -12,21 +12,23 @@ import {
   Radio, 
   Layers, 
   Crosshair,
-  Plus,
-  Minus
+  MapPin,
+  LocateFixed,
+  ShieldAlert
 } from 'lucide-react';
 
-// 1. Prominent Animated Drone Marker with Heading Cone & Live Pulse
-const createDroneMarker = (heading, isOffline, isBacktrack) => {
-  const color = isBacktrack ? '#E2A24C' : isOffline ? '#FF453A' : '#3B8EDB';
-  const pulseColor = isBacktrack ? 'rgba(226, 162, 76, 0.4)' : isOffline ? 'rgba(255, 69, 58, 0.4)' : 'rgba(59, 142, 219, 0.4)';
+// 1. Prominent Animated AERIS Device Location Marker
+const createDeviceMarker = (heading, accuracy, status) => {
+  const isFix = status === 'ACTIVE';
+  const color = isFix ? '#3B8EDB' : '#F5A623';
+  const pulseColor = isFix ? 'rgba(59, 142, 219, 0.45)' : 'rgba(245, 166, 35, 0.45)';
 
   return L.divIcon({
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
         <!-- Telemetry Callout Badge -->
-        <div style="background: #111516; border: 1.5px solid ${color}; color: #F2F4F3; font-family: monospace; font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 9999px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 12px ${pulseColor}; letter-spacing: 0.5px;">
-          AERIS-01 • 120m • 14.2m/s
+        <div style="background: #0B0E0F; border: 1.5px solid ${color}; color: #F2F4F3; font-family: monospace; font-size: 8px; font-weight: 700; padding: 1.5px 6px; border-radius: 9999px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 12px ${pulseColor}; letter-spacing: 0.5px;">
+          AERIS DEVICE • ${accuracy ? `±${Math.round(accuracy)}m` : 'LOCATING'}
         </div>
         <!-- Directional Cone & Center Disc -->
         <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
@@ -39,119 +41,90 @@ const createDroneMarker = (heading, isOffline, isBacktrack) => {
         </div>
       </div>
     `,
-    className: 'aeris-drone-icon',
+    className: 'aeris-device-icon',
     iconSize: [120, 52],
     iconAnchor: [60, 36],
     popupAnchor: [0, -36]
   });
 };
 
-// 2. Checkpoint Marker with Numbered Label & Last Connected Badge
-const createCheckpointIcon = (cp) => {
-  const isDone = cp.status === 'COMPLETED' || cp.status === 'PASSED' || cp.isDone;
-  const isLast = cp.isLastConnected;
-  const color = isLast ? '#62C370' : isDone ? '#3B8EDB' : '#58605E';
-  const bg = isLast ? 'rgba(98, 195, 112, 0.25)' : isDone ? '#181D1E' : '#0B0E0F';
+// 2. Real YOLO Person Observation Marker (Honestly labeled as observed device position)
+const createPersonObservationIcon = (obs) => {
+  const confPct = Math.round((obs.confidence || 0.9) * 100);
+  const priority = obs.priority || (confPct >= 85 ? 'HIGH' : 'MED');
+  const color = priority === 'HIGH' ? '#70EB78' : '#F5A623';
 
-  return L.divIcon({
-    html: `
-      <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
-        ${isLast ? `
-          <div style="background: #111516; border: 1px solid #62C370; color: #62C370; font-family: monospace; font-size: 7px; font-weight: 700; padding: 0.5px 4px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap;">
-            📶 LAST CONNECTED
-          </div>
-        ` : ''}
-        <div style="width: 20px; height: 20px; border-radius: 50%; background: ${bg}; border: 1.5px solid ${color}; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 8.5px; font-weight: bold; color: ${isDone ? '#F2F4F3' : '#8C9492'}; box-shadow: 0 0 8px ${isLast ? 'rgba(98,195,112,0.6)' : 'rgba(59,142,219,0.3)'};">
-          ${(cp.label || '').replace('CP-', '')}
-        </div>
-        <div style="background: rgba(7, 9, 9, 0.85); color: #8C9492; font-family: monospace; font-size: 7px; padding: 0.5px 3px; border-radius: 2px; margin-top: 1px;">
-          ${cp.label}
-        </div>
-      </div>
-    `,
-    className: 'aeris-cp-icon',
-    iconSize: [100, 44],
-    iconAnchor: [50, 30],
-    popupAnchor: [0, -30]
-  });
-};
-
-// 3. Survivor Marker (Yellow Person Icon + Confidence Tag)
-const createSurvivorIcon = (surv) => {
   return L.divIcon({
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
-        <div style="background: #111516; border: 1px solid #E2A24C; color: #E2A24C; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 0.5px 4px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 8px rgba(226,162,76,0.6);">
-          👤 ${surv.confidence}% [${(surv.priority || 'PRIO').substring(0,4)}]
+        <div style="background: #0B0E0F; border: 1px solid ${color}; color: ${color}; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 8px ${color}80;">
+          🎯 PERSON • ${confPct}% [${priority}]
         </div>
-        <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(226, 162, 76, 0.25); border: 2px solid #E2A24C; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(226, 162, 76, 0.8);">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="#E2A24C">
+        <div style="width: 26px; height: 26px; border-radius: 50%; background: rgba(112, 235, 120, 0.25); border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px ${color};">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="${color}">
             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
           </svg>
         </div>
       </div>
     `,
-    className: 'aeris-survivor-icon',
-    iconSize: [80, 44],
-    iconAnchor: [40, 28],
-    popupAnchor: [0, -28]
+    className: 'aeris-person-obs-icon',
+    iconSize: [110, 48],
+    iconAnchor: [55, 30],
+    popupAnchor: [0, -30]
   });
 };
 
-// 4. Hazard Marker
-const createHazardIcon = (haz) => {
-  const isFire = haz.type === 'FIRE';
-  const isFlood = haz.type === 'FLOOD';
-  const color = isFire ? '#FF453A' : isFlood ? '#00E5FF' : '#E2A24C';
+// 3. Map Pan Controller (Smoothly Centers on First Fix & Handles Recenter Button)
+function MapController({ targetCenter, shouldRecenter, onRecenterDone }) {
+  const map = useMap();
+  const hasInitialCenteredRef = useRef(false);
 
-  let iconSvg = '';
-  if (isFire) {
-    iconSvg = `<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" fill="${color}"/>`;
-  } else if (isFlood) {
-    iconSvg = `<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" stroke="${color}" stroke-width="2" fill="none"/>`;
-  } else {
-    iconSvg = `<path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" fill="${color}"/>`;
-  }
+  // Auto-center on first valid location
+  useEffect(() => {
+    if (targetCenter && targetCenter[0] && targetCenter[1] && !hasInitialCenteredRef.current) {
+      hasInitialCenteredRef.current = true;
+      map.flyTo(targetCenter, 16, { animate: true, duration: 1.2 });
+    }
+  }, [targetCenter, map]);
 
-  return L.divIcon({
-    html: `
-      <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
-        <div style="background: #111516; border: 1px solid ${color}; color: ${color}; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 0.5px 3px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 6px ${color}60;">
-          ${(haz.label || 'HAZARD').substring(0, 14)}
-        </div>
-        <div style="width: 24px; height: 24px; border-radius: 50%; background: ${color}25; border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px ${color}80;">
-          <svg width="13" height="13" viewBox="0 0 24 24">
-            ${iconSvg}
-          </svg>
-        </div>
-      </div>
-    `,
-    className: 'aeris-hazard-icon',
-    iconSize: [90, 44],
-    iconAnchor: [45, 28],
-    popupAnchor: [0, -28]
-  });
-};
+  // User-triggered manual recenter
+  useEffect(() => {
+    if (shouldRecenter && targetCenter && targetCenter[0] && targetCenter[1]) {
+      map.flyTo(targetCenter, 16, { animate: true, duration: 0.8 });
+      if (onRecenterDone) onRecenterDone();
+    }
+  }, [shouldRecenter, targetCenter, map, onRecenterDone]);
+
+  return null;
+}
 
 export default function LiveDisasterMap({
-  missionState,
-  checkpoints = [],
-  flightPaths = {},
+  missionState = {},
+  deviceLocation = null,
+  locationStatus = 'ACQUIRING',
+  locationPath = [],
+  detectionEvents = [],
   survivors = [],
   hazards = [],
-  heatmapData = [],
-  isOffline = false,
-  isBacktracking = false
+  heatmapData = []
 }) {
   const [showRoute, setShowRoute] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showDetections, setShowDetections] = useState(true);
+  const [triggerRecenter, setTriggerRecenter] = useState(false);
 
-  const traveledPath = flightPaths.traveled || flightPaths.completed || [];
-  const plannedPath = flightPaths.planned || flightPaths.upcoming || [];
-  const backtrackPath = flightPaths.backtrack || [];
+  // Derive active coordinates (Real Device Location)
+  const hasRealCoords = deviceLocation && deviceLocation.latitude && deviceLocation.longitude;
+  const currentPos = hasRealCoords 
+    ? [deviceLocation.latitude, deviceLocation.longitude] 
+    : [30.5610, 79.5680]; // Initial map view bounds while acquiring fix
 
-  const dronePos = [30.5610, 79.5680]; // Current Drone position (Near CP-04)
+  const accuracyMeters = deviceLocation?.accuracy || 25;
+
+  // Filter real YOLO person observations that contain valid device observation locations
+  const personObservations = detectionEvents.filter(
+    (ev) => ev.class === 'person' && ev.observation_location && ev.observation_location.latitude && ev.observation_location.longitude
+  );
 
   return (
     <div className="w-full h-full aeris-panel-container flex flex-col overflow-hidden relative select-none">
@@ -162,12 +135,12 @@ export default function LiveDisasterMap({
           <h2 className="text-[11px] font-semibold uppercase tracking-wider font-mono text-aeris-textPrimary">
             Live Mission Map
           </h2>
-          <span className="text-[9px] font-mono text-aeris-textMuted hidden sm:inline">
-            (CHAMOLI FLASH FLOOD BASIN)
+          <span className="text-[9px] font-mono text-aeris-green px-1.5 py-0.2 rounded bg-aeris-green/10 border border-aeris-green/20">
+            DEVICE LOCATION
           </span>
         </div>
 
-        {/* Minimal Floating Layer Toggles: [ ROUTE ] [ HEAT MAP ] [ DETECTIONS ] */}
+        {/* Minimal Layer Toggles: [ RECORDED PATH ] [ HEAT MAP ] [ OBSERVATIONS ] */}
         <div className="flex items-center space-x-1 text-[9.5px] font-mono">
           <button
             onClick={() => setShowRoute(!showRoute)}
@@ -177,7 +150,7 @@ export default function LiveDisasterMap({
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
             }`}
           >
-            ROUTE
+            PATH ({locationPath.length})
           </button>
 
           <button
@@ -199,7 +172,7 @@ export default function LiveDisasterMap({
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
             }`}
           >
-            DETECTIONS ({survivors.length + hazards.length})
+            OBSERVATIONS ({personObservations.length})
           </button>
         </div>
       </div>
@@ -207,12 +180,18 @@ export default function LiveDisasterMap({
       {/* 2. Main Leaflet Dark Satellite Canvas */}
       <div className="flex-1 w-full h-full relative min-h-0">
         <MapContainer
-          center={dronePos}
+          center={currentPos}
           zoom={15}
           scrollWheelZoom={true}
           className="w-full h-full"
           zoomControl={false}
         >
+          <MapController 
+            targetCenter={hasRealCoords ? currentPos : null}
+            shouldRecenter={triggerRecenter}
+            onRecenterDone={() => setTriggerRecenter(false)}
+          />
+
           {/* Dark Satellite Basemap Tiles */}
           <TileLayer
             attribution='&copy; <a href="https://www.esri.com/">Esri Satellite</a>'
@@ -221,7 +200,43 @@ export default function LiveDisasterMap({
             maxZoom={18}
           />
 
-          {/* 3. Geographically Connected Disaster Risk Heat Map Layer */}
+          {/* 3. Location Accuracy Circle (Radius in meters matching browser accuracy) */}
+          {hasRealCoords && (
+            <Circle
+              center={currentPos}
+              radius={accuracyMeters}
+              pathOptions={{
+                color: '#3B8EDB',
+                weight: 1.5,
+                fillColor: '#3B8EDB',
+                fillOpacity: 0.12,
+                dashArray: '4, 4'
+              }}
+            >
+              <Tooltip direction="center" className="font-mono text-xs text-cyan-200 bg-black/85 border border-cyan-500/30">
+                LOCATION ACCURACY: ±{Math.round(accuracyMeters)}m
+              </Tooltip>
+            </Circle>
+          )}
+
+          {/* 4. Real Recorded Movement Breadcrumb Trail */}
+          {showRoute && locationPath.length > 1 && (
+            <Polyline
+              positions={locationPath.map(p => [p.latitude, p.longitude])}
+              pathOptions={{
+                color: '#62C370',
+                weight: 3,
+                opacity: 0.9,
+                dashArray: '4, 6'
+              }}
+            >
+              <Tooltip sticky direction="top" className="font-mono text-xs text-green-300 bg-black/90">
+                RECORDED DEVICE PATH ({locationPath.length} points)
+              </Tooltip>
+            </Polyline>
+          )}
+
+          {/* 5. Geographically Connected Disaster Risk Heat Map Layer */}
           {showHeatmap && heatmapData.map((zone) => (
             <Circle
               key={zone.id}
@@ -241,188 +256,96 @@ export default function LiveDisasterMap({
             </Circle>
           ))}
 
-          {/* 4. Flight Routes: Traveled, Planned, and Autonomous Backtracking */}
-          {showRoute && (
-            <>
-              {/* Traveled / Completed Path (Dimmer blue line) */}
-              {traveledPath.length > 0 && (
-                <Polyline
-                  positions={traveledPath}
-                  pathOptions={{
-                    color: isBacktracking ? 'rgba(59, 142, 219, 0.4)' : '#3B8EDB',
-                    weight: 3,
-                    opacity: 0.9,
-                    dashArray: '3, 6'
-                  }}
-                />
-              )}
-
-              {/* Planned Forward Route (Soft bright line) */}
-              {!isOffline && !isBacktracking && plannedPath.length > 0 && (
-                <Polyline
-                  positions={plannedPath}
-                  pathOptions={{
-                    color: '#F2F4F3',
-                    weight: 1.5,
-                    opacity: 0.6,
-                    dashArray: '4, 8'
-                  }}
-                />
-              )}
-
-              {/* AUTONOMOUS BACKTRACKING ROUTE (Amber Dashed Animated Path) */}
-              {isBacktracking && backtrackPath.length > 0 && (
-                <Polyline
-                  positions={backtrackPath}
-                  pathOptions={{
-                    color: '#E2A24C',
-                    weight: 4,
-                    opacity: 0.95,
-                    dashArray: '6, 6'
-                  }}
-                >
-                  <Tooltip sticky direction="top" className="font-mono text-xs text-amber-300 bg-black/90">
-                    ◄ AUTONOMOUS BACKTRACKING: Returning to Checkpoint
-                  </Tooltip>
-                </Polyline>
-              )}
-            </>
-          )}
-
-          {/* 5. Checkpoint Markers (BASE to TARGET ZONE) */}
-          {showRoute && checkpoints.map((cp) => (
+          {/* 6. Real YOLO Person Observation Markers (Captured at device location) */}
+          {showDetections && personObservations.map((obs, idx) => (
             <Marker
-              key={cp.id}
-              position={[cp.lat, cp.lng]}
-              icon={createCheckpointIcon(cp)}
+              key={obs.event_id || `obs-${idx}`}
+              position={[obs.observation_location.latitude, obs.observation_location.longitude]}
+              icon={createPersonObservationIcon(obs)}
             >
               <Popup>
-                <div className="font-sans text-xs p-1 text-[#F2F4F3]">
+                <div className="font-sans text-xs p-1 max-w-[260px] text-[#F2F4F3]">
                   <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
-                    <span className="font-bold text-aeris-textPrimary">{cp.label}: {cp.name}</span>
-                    <span className="text-aeris-green text-[10px] font-mono font-semibold px-1 rounded bg-aeris-green/10">{cp.status}</span>
-                  </div>
-                  <p className="text-[#A0AAB0] text-[11px] font-mono">Alt: <strong className="text-[#F2F4F3]">{cp.altitude || 50}m AGL</strong></p>
-                  {cp.isLastConnected && (
-                    <p className="text-aeris-green font-bold text-[10px] mt-1 font-mono">
-                      📶 LAST KNOWN LINK ({cp.label})
-                    </p>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-
-          {/* 6. Survivor Detection Markers */}
-          {showDetections && survivors.map((surv) => (
-            <Marker
-              key={surv.id}
-              position={[surv.lat, surv.lng]}
-              icon={createSurvivorIcon(surv)}
-            >
-              <Popup>
-                <div className="font-sans text-xs p-1 max-w-[240px] text-[#F2F4F3]">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
-                    <span className="font-bold text-aeris-amber text-[12px] font-mono">{surv.label}</span>
-                    <span className="bg-aeris-red/25 text-aeris-red text-[9.5px] font-mono px-1.5 py-0.2 rounded font-bold border border-aeris-red/40">
-                      {surv.priority || 'URGENT'}
+                    <span className="font-bold text-aeris-green text-[12px] font-mono">🎯 PERSON OBSERVATION</span>
+                    <span className="bg-aeris-green/20 text-aeris-green text-[9.5px] font-mono px-1.5 py-0.2 rounded font-bold border border-aeris-green/30">
+                      {obs.priority || 'HIGH PRIORITY'}
                     </span>
                   </div>
                   <div className="space-y-1 text-[11px] font-sans">
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Confidence:</span><strong className="text-aeris-green font-mono">{surv.confidence}%</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Sector:</span><strong className="text-[#F2F4F3] font-mono">{surv.sector || 'Sector B-4'}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{surv.timestamp || '10:41 AM'}</strong></p>
-                    <p className="text-[11px] text-[#A0AAB0] pt-1 border-t border-white/10 leading-relaxed font-light">{surv.details || 'Detected by Edge AI'}</p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Confidence:</span><strong className="text-aeris-green font-mono">{Math.round((obs.confidence || 0.95) * 100)}%</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Obs. Location:</span><strong className="text-[#F2F4F3] font-mono">{obs.observation_location.latitude.toFixed(6)}, {obs.observation_location.longitude.toFixed(6)}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Accuracy:</span><strong className="text-[#F2F4F3] font-mono">±{Math.round(obs.observation_location.accuracy || 25)}m</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-cyan font-mono">DEVICE LOCATION</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{new Date(obs.timestamp).toLocaleTimeString()}</strong></p>
+                    <p className="text-[10px] text-[#A0AAB0] pt-1 border-t border-white/10 leading-tight italic">
+                      * Position represents device coordinates when optical detection occurred.
+                    </p>
                   </div>
                 </div>
               </Popup>
             </Marker>
           ))}
 
-          {/* 7. Hazard Markers */}
-          {showDetections && hazards.map((haz) => (
+          {/* 7. Active Real Device Location Marker */}
+          {hasRealCoords && (
             <Marker
-              key={haz.id}
-              position={[haz.lat, haz.lng]}
-              icon={createHazardIcon(haz)}
+              position={currentPos}
+              icon={createDeviceMarker(deviceLocation.heading, accuracyMeters, locationStatus)}
             >
               <Popup>
-                <div className="font-sans text-xs p-1 max-w-[240px] text-[#F2F4F3]">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
-                    <span className="font-bold text-aeris-red text-[12px] font-mono">{haz.label}</span>
-                    <span className="text-[9.5px] font-mono text-aeris-amber font-bold px-1.5 py-0.2 rounded bg-aeris-amber/20 border border-aeris-amber/30">{haz.severity || 'HIGH'}</span>
+                <div className="font-sans text-xs p-1 text-[#F2F4F3]">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
+                    <span className="font-bold text-aeris-cyan font-mono">AERIS DEVICE POSITION</span>
+                    <span className="text-aeris-green text-[9.5px] font-mono">● {locationStatus}</span>
                   </div>
-                  <div className="space-y-1 text-[11px] font-sans">
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Sector:</span><strong className="text-[#F2F4F3] font-mono">{haz.sector || 'Gorge'}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{haz.timestamp || '10:40 AM'}</strong></p>
-                    <p className="text-[11px] text-[#A0AAB0] pt-1 border-t border-white/10 leading-relaxed font-light">{haz.details || 'Identified by sensor suite'}</p>
+                  <div className="space-y-1 text-[11px] font-mono">
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Lat:</span><strong>{deviceLocation.latitude.toFixed(6)}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Lng:</span><strong>{deviceLocation.longitude.toFixed(6)}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Accuracy:</span><strong className="text-aeris-cyan">±{Math.round(accuracyMeters)} m</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-green">DEVICE LOCATION</strong></p>
                   </div>
                 </div>
               </Popup>
             </Marker>
-          ))}
-
-          {/* 8. Active AERIS-01 Drone Marker */}
-          <Marker
-            position={dronePos}
-            icon={createDroneMarker(missionState.heading || 42, isOffline, isBacktracking)}
-          >
-            <Popup>
-              <div className="font-sans text-xs p-1 text-[#F2F4F3]">
-                <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
-                  <span className="font-bold text-aeris-cyan font-mono">{missionState.droneId}</span>
-                  <span className="text-aeris-green text-[9.5px] font-mono">{missionState.flightMode}</span>
-                </div>
-                <p className="text-[#A0AAB0] text-[11px] font-mono">Alt: <strong className="text-[#F2F4F3]">{missionState.altitude}</strong> • Speed: <strong className="text-[#F2F4F3]">{missionState.speed}</strong></p>
-                {isBacktracking && (
-                  <p className="text-aeris-amber text-[10px] font-mono font-bold mt-1">
-                    AUTONOMOUS BACKTRACKING IN PROGRESS (72%)
-                  </p>
-                )}
-              </div>
-            </Popup>
-          </Marker>
+          )}
         </MapContainer>
 
-        {/* 9. Backtracking Alert Banner (Directly over map when active) */}
-        {isBacktracking && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-aeris-panel/95 border border-aeris-amber/60 px-3.5 py-1.5 rounded-card backdrop-blur-md font-mono text-[11px] text-aeris-amber font-bold shadow-glow-amber flex items-center space-x-2 pointer-events-auto">
-            <Radio className="w-3.5 h-3.5 animate-spin text-aeris-amber" />
-            <span>AUTONOMOUS BACKTRACKING: RETURNING TO CHECKPOINT (72%)</span>
+        {/* 8. Location Status Banner (Top-Center) */}
+        {locationStatus === 'DENIED' && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-aeris-red/90 border border-aeris-red px-3.5 py-1.5 rounded-card backdrop-blur-md font-mono text-[11px] text-white font-bold shadow-glow-red flex items-center space-x-2 pointer-events-auto">
+            <ShieldAlert className="w-3.5 h-3.5 text-white animate-pulse" />
+            <span>LOCATION ACCESS DENIED — Enable browser location permission</span>
           </div>
         )}
 
-        {/* 10. AI Risk Analysis Legend (Bottom-Left) */}
-        {showHeatmap && (
-          <div className="absolute bottom-2.5 left-2.5 z-[1000] bg-[#0B0E0F]/95 border border-aeris-border p-2 rounded-card backdrop-blur-md font-mono text-[9.5px] shadow-lg space-y-1 pointer-events-auto">
-            <div className="text-aeris-textMuted font-bold uppercase tracking-wider text-[8.5px] border-b border-white/5 pb-0.5">
-              AI RISK ANALYSIS
-            </div>
-            <div className="flex items-center space-x-2.5 text-[9.5px]">
-              <span className="flex items-center text-aeris-green">
-                <span className="w-1.5 h-1.5 rounded-full bg-aeris-green mr-1"></span>
-                LOW
-              </span>
-              <span className="flex items-center text-[#D99A4A]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#D99A4A] mr-1"></span>
-                MOD
-              </span>
-              <span className="flex items-center text-aeris-amber">
-                <span className="w-1.5 h-1.5 rounded-full bg-aeris-amber mr-1"></span>
-                HIGH
-              </span>
-              <span className="flex items-center text-aeris-red">
-                <span className="w-1.5 h-1.5 rounded-full bg-aeris-red mr-1 shadow-glow-red"></span>
-                CRIT
-              </span>
-            </div>
+        {locationStatus === 'ACQUIRING' && !hasRealCoords && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-[#0B0E0F]/90 border border-aeris-cyan/40 px-3.5 py-1.5 rounded-card backdrop-blur-md font-mono text-[11px] text-aeris-cyan font-bold flex items-center space-x-2 pointer-events-auto">
+            <Navigation className="w-3.5 h-3.5 text-aeris-cyan animate-spin" />
+            <span>ACQUIRING REAL DEVICE LOCATION...</span>
           </div>
         )}
 
-        {/* 11. Minimal Floating Zoom / Focus Buttons (Bottom-Right) */}
+        {/* 9. Minimal Floating Status & Recenter Button (Bottom-Right) */}
         <div className="absolute bottom-2.5 right-2.5 z-[1000] flex items-center space-x-1.5 font-mono text-[9.5px] pointer-events-auto">
+          {hasRealCoords && (
+            <button
+              onClick={() => setTriggerRecenter(true)}
+              className="bg-[#0B0E0F]/95 border border-aeris-cyan/40 hover:border-aeris-cyan px-2.5 py-1 rounded-card backdrop-blur-md text-aeris-cyan flex items-center space-x-1 transition-colors"
+              title="Recenter Map to Device Position"
+            >
+              <LocateFixed className="w-3 h-3 text-aeris-cyan" />
+              <span>RECENTER</span>
+            </button>
+          )}
+
           <div className="bg-[#0B0E0F]/95 border border-aeris-border px-2.5 py-1 rounded-card backdrop-blur-md text-aeris-textSecondary">
-            <span className="text-aeris-green font-bold">● RTK FIX</span> • LAT: {dronePos[0].toFixed(4)} LNG: {dronePos[1].toFixed(4)}
+            {hasRealCoords ? (
+              <>
+                <span className="text-aeris-green font-bold">● ACTIVE</span> • LAT: {deviceLocation.latitude.toFixed(5)} LNG: {deviceLocation.longitude.toFixed(5)} (±{Math.round(accuracyMeters)}m)
+              </>
+            ) : (
+              <span className="text-aeris-amber font-bold">● {locationStatus}</span>
+            )}
           </div>
         </div>
       </div>

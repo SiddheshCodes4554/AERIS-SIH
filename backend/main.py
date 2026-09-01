@@ -1,17 +1,18 @@
 import os
 import json
 import asyncio
-from typing import List
+from typing import List, Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from camera_service import camera_service
 from detection_service import detection_service
 from telemetry_service import telemetry_service
+from location_service import location_service
 
 load_dotenv()
 
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI):
         "type": "telemetry",
         "data": telem
     })
+    location_service.broadcast_callback = lambda loc_msg: manager.broadcast_sync(loc_msg)
     
     yield
     # Shutdown: clean release of threads, cameras, and models
@@ -78,8 +80,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AERIS Command Center Backend",
-    description="Real-Time Telemetry, Live Video Stream & YOLO Object Detection API for AERIS-01 UAV",
-    version="1.2.0",
+    description="Real-Time Device Location, Telemetry, Live Video Stream & YOLO Object Detection API for AERIS-01",
+    version="1.3.0",
     lifespan=lifespan
 )
 
@@ -95,14 +97,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Pydantic Request Models
+# ==========================================
+# PYDANTIC REQUEST MODELS
+# ==========================================
+
+class LocationUpdateRequest(BaseModel):
+    latitude: float = Field(..., ge=-90.0, le=90.0, description="Latitude in decimal degrees")
+    longitude: float = Field(..., ge=-180.0, le=180.0, description="Longitude in decimal degrees")
+    accuracy: Optional[float] = Field(None, ge=0.0, description="Accuracy radius in meters")
+    altitude: Optional[float] = None
+    altitudeAccuracy: Optional[float] = None
+    heading: Optional[float] = None
+    speed: Optional[float] = None
+    timestamp: Optional[str] = None
+    source: str = "browser_geolocation"
+
+class LocationStatusRequest(BaseModel):
+    status: str  # "active" | "permission_denied" | "unavailable" | "timeout" | "not_supported"
+    source: str = "browser_geolocation"
+    reason: Optional[str] = None
+
 class CameraSelectRequest(BaseModel):
     camera_index: int
 
 class AIConfigRequest(BaseModel):
-    model_name: str = None
-    confidence_threshold: float = None
-    target_filter: str = None
+    model_name: Optional[str] = None
+    confidence_threshold: Optional[float] = None
+    target_filter: Optional[str] = None
 
 class ZoneSelectRequest(BaseModel):
     zone_id: str
@@ -115,7 +136,7 @@ class MissionCommandRequest(BaseModel):
 
 
 # ==========================================
-# HEALTH & STATUS ENDPOINTS
+# HEALTH & SYSTEM STATUS ENDPOINTS
 # ==========================================
 
 @app.get("/api/health")
@@ -125,9 +146,72 @@ async def health_check():
         "status": "healthy",
         "service": "aeris-backend",
         "ai_engine": "ultralytics-yolo",
+        "location_engine": "active",
         "telemetry_engine": "active"
     }
 
+
+@app.get("/api/system/status")
+async def get_system_status():
+    """Returns comprehensive health and status across all AERIS subsystems."""
+    return {
+        "system": "ONLINE",
+        "location": location_service.get_status(),
+        "camera": camera_service.get_status(),
+        "ai": detection_service.get_status(),
+        "telemetry": telemetry_service.get_telemetry()
+    }
+
+
+# ==========================================
+# REAL DEVICE LOCATION ENDPOINTS
+# ==========================================
+
+@app.post("/api/location/update")
+async def update_device_location(payload: LocationUpdateRequest):
+    """Receives and validates real device/browser GPS coordinates, records path, and broadcasts."""
+    try:
+        result = location_service.update_location(payload.model_dump())
+        return {
+            "success": True,
+            "status": "active",
+            "location": result
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/location/status")
+async def update_location_status(payload: LocationStatusRequest):
+    """Reports browser location permission or error state (e.g. permission_denied, unavailable)."""
+    location_service.set_status(payload.status, payload.source, payload.reason)
+    return {
+        "success": True,
+        "status": payload.status
+    }
+
+
+@app.get("/api/location/current")
+async def get_current_location():
+    """Returns the latest genuine device location or unavailable response."""
+    return location_service.get_current_location()
+
+
+@app.get("/api/location/status")
+async def get_location_status():
+    """Returns current location operational, permission, and accuracy status."""
+    return location_service.get_status()
+
+
+@app.get("/api/location/path")
+async def get_location_path():
+    """Returns recorded breadcrumb path history of real device movement."""
+    return location_service.get_path()
+
+
+# ==========================================
+# AI DETECTION & INTELLIGENCE ENDPOINTS
+# ==========================================
 
 @app.get("/api/ai/status")
 async def ai_status():
@@ -144,6 +228,16 @@ async def set_ai_config(payload: AIConfigRequest):
         target_filter=payload.target_filter
     )
     return {"success": True, "status": result}
+
+
+@app.get("/api/detections/history")
+async def get_detections_history():
+    """Returns history of confirmed YOLO detections with attached observation locations."""
+    history = detection_service.get_event_history()
+    return {
+        "total_events": len(history),
+        "events": history
+    }
 
 
 # ==========================================
@@ -211,7 +305,7 @@ async def select_camera(payload: CameraSelectRequest):
 
 @app.post("/api/camera/reconnect")
 async def reconnect_camera():
-    """Forces an immediate driver reset and reconnects the current active camera."""
+    """Forces an immediate driver reset and reconnects current active camera."""
     status = camera_service.force_reconnect()
     return {
         "success": True,
@@ -220,7 +314,7 @@ async def reconnect_camera():
 
 
 # ==========================================
-# VIDEO STREAM ENDPOINTS
+# VIDEO STREAM ENDPOINTS (MJPEG)
 # ==========================================
 
 STREAM_HEADERS = {
@@ -232,8 +326,8 @@ STREAM_HEADERS = {
 }
 
 @app.get("/api/video/feed")
-async def video_feed():
-    """Streams clean, unannotated live MJPEG frames from the hardware webcam."""
+async def video_raw_feed():
+    """Streams live optical raw video from physical hardware camera."""
     return StreamingResponse(
         camera_service.generate_frames(),
         media_type="multipart/x-mixed-replace; boundary=frame",
@@ -243,7 +337,7 @@ async def video_feed():
 
 @app.get("/api/video/detection-feed")
 async def video_detection_feed():
-    """Streams live MJPEG frames with real-time YOLO object detection bounding boxes."""
+    """Streams real-time YOLO object detection annotated video stream."""
     return StreamingResponse(
         detection_service.generate_annotated_frames(),
         media_type="multipart/x-mixed-replace; boundary=frame",
@@ -252,50 +346,35 @@ async def video_detection_feed():
 
 
 # ==========================================
-# YOLO DETECTION REST API
-# ==========================================
-
-@app.get("/api/detections/latest")
-async def latest_detections():
-    """Returns the latest genuine YOLO detection objects, coordinates, and confidence."""
-    return detection_service.get_latest_detections()
-
-
-@app.get("/api/detections/history")
-async def detection_history():
-    """Returns the debounced chronological history of confirmed detection events (max 100)."""
-    return {
-        "total_events": len(detection_service.event_history),
-        "history": detection_service.get_event_history()
-    }
-
-
-# ==========================================
-# REAL-TIME WEBSOCKET
+# WEBSOCKET REAL-TIME STREAM
 # ==========================================
 
 @app.websocket("/ws/live")
-async def websocket_live_endpoint(websocket: WebSocket):
-    """Unified WebSocket streaming telemetry, detection events, and live AI updates."""
+async def websocket_endpoint(websocket: WebSocket):
+    """Unified full-duplex WebSocket stream for telemetry, locations, and detections."""
     await manager.connect(websocket)
     try:
-        # Send initial state immediately upon connection
+        # Send initial state snapshot upon connection
         await websocket.send_text(json.dumps({
             "type": "init",
-            "telemetry": telemetry_service.get_telemetry(),
-            "ai_status": detection_service.get_status(),
-            "latest_detections": detection_service.get_latest_detections()
+            "data": {
+                "telemetry": telemetry_service.get_telemetry(),
+                "ai_status": detection_service.get_status(),
+                "location": location_service.get_current_location(),
+                "camera_status": camera_service.get_status()
+            }
         }))
         while True:
+            # Keep connection open and accept operator messages if any
             data = await websocket.receive_text()
+            try:
+                msg = json.loads(data)
+                # Handle client-side location update over WS if provided
+                if msg.get("type") == "location_update" and msg.get("data"):
+                    location_service.update_location(msg["data"])
+            except Exception:
+                pass
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception:
+    except Exception as e:
         manager.disconnect(websocket)
-
-
-if __name__ == "__main__":
-    import uvicorn
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run(app, host=host, port=port)

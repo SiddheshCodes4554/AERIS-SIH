@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Navigation from './components/Navigation';
 import Header from './components/Header';
 import MissionTelemetry from './components/MissionTelemetry';
@@ -15,6 +15,7 @@ import AERIS01OperationsView from './components/operations/AERIS01OperationsView
 import IncidentResponseView from './components/incidents/IncidentResponseView';
 import MissionIntelligenceView from './components/analytics/MissionIntelligenceView';
 
+import { useGeolocation } from './hooks/useGeolocation';
 import { DISASTER_ZONES } from './data/operationalAreas';
 import { 
   DEFAULT_MISSION_STATE, 
@@ -31,32 +32,64 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('live-mission'); // 'live-mission' | 'aeris01-operations' | 'incidents' | 'intelligence'
   const [selectedZoneId, setSelectedZoneId] = useState('chamoli-flood');
   const [missionState, setMissionState] = useState(DEFAULT_MISSION_STATE);
-  const [simulationMode, setSimulationMode] = useState('NORMAL'); // 'NORMAL' | 'SIGNAL_LOSS' | 'BACKTRACKING' | 'RECONNECTED' | 'DETECTION'
+  const [simulationMode, setSimulationMode] = useState('NORMAL'); // 'NORMAL' | 'SIGNAL_LOSS' | 'BACKTRACKING' | 'RECONNECTED'
   const [isPlayingAutoDemo, setIsPlayingAutoDemo] = useState(false);
   const [eventLog, setEventLog] = useState(INITIAL_EVENT_LOG);
   const [layoutMode, setLayoutMode] = useState('DUAL_SPLIT'); // 'DUAL_SPLIT' (50/50) | '3_PANE' | 'CAM_FOCUS' | 'MAP_FOCUS'
+  const [detectionEvents, setDetectionEvents] = useState([]);
+  const [locationPath, setLocationPath] = useState([]);
 
   const activeZone = DISASTER_ZONES.find(z => z.id === selectedZoneId) || DISASTER_ZONES[0];
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
 
-  // 1. Initial State & Real-Time WebSocket Synchronization
+  // 1. Hook into Real Device Location Services
+  const {
+    location: deviceLocation,
+    status: locationStatus,
+    error: locationError,
+    source: locationSource,
+    retryTracking
+  } = useGeolocation(backendUrl);
+
+  // Synchronize location changes into locationPath state
+  useEffect(() => {
+    if (deviceLocation && deviceLocation.latitude && deviceLocation.longitude) {
+      setLocationPath(prev => {
+        const last = prev[prev.length - 1];
+        if (!last || last.latitude !== deviceLocation.latitude || last.longitude !== deviceLocation.longitude) {
+          return [...prev.slice(-999), deviceLocation];
+        }
+        return prev;
+      });
+    }
+  }, [deviceLocation]);
+
+  // 2. Fetch Initial Telemetry & Recorded Path History
   useEffect(() => {
     let ws = null;
     let pollTimer = null;
 
-    const fetchInitialTelemetry = async () => {
+    const fetchInitialData = async () => {
       try {
-        const res = await fetch(`${backendUrl}/api/telemetry/current`, { mode: 'cors' });
-        if (res.ok) {
-          const data = await res.json();
-          setMissionState(prev => ({
-            ...prev,
-            ...data
-          }));
+        const [telemRes, pathRes] = await Promise.all([
+          fetch(`${backendUrl}/api/telemetry/current`, { mode: 'cors' }),
+          fetch(`${backendUrl}/api/location/path`, { mode: 'cors' })
+        ]);
+
+        if (telemRes.ok) {
+          const data = await telemRes.json();
+          setMissionState(prev => ({ ...prev, ...data }));
+        }
+
+        if (pathRes.ok) {
+          const pathData = await pathRes.json();
+          if (pathData.path && pathData.path.length > 0) {
+            setLocationPath(pathData.path);
+          }
         }
       } catch (err) {
-        console.debug("Backend telemetry standby:", err);
+        console.debug("Backend initial sync standby:", err);
       }
     };
 
@@ -65,29 +98,38 @@ export default function App() {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          console.log("WebSocket connected to AERIS Telemetry Stream");
+          console.log("WebSocket connected to AERIS Unified Command Stream");
         };
 
         ws.onmessage = (event) => {
           try {
             const msg = JSON.parse(event.data);
             if (msg.type === 'init') {
-              if (msg.telemetry) {
-                setMissionState(prev => ({ ...prev, ...msg.telemetry }));
+              if (msg.data?.telemetry) {
+                setMissionState(prev => ({ ...prev, ...msg.data.telemetry }));
               }
             } else if (msg.type === 'telemetry') {
-              setMissionState(prev => ({
-                ...prev,
-                ...msg.data
-              }));
+              setMissionState(prev => ({ ...prev, ...msg.data }));
+            } else if (msg.type === 'location') {
+              // Location update from server
+              if (msg.data) {
+                setLocationPath(prev => [...prev.slice(-999), msg.data]);
+              }
             } else if (msg.type === 'detection') {
               const det = msg.data;
               const now = new Date().toISOString().substring(11, 19);
               const confPct = det.confidence_pct || Math.round((det.confidence || 0.95) * 100);
+              
+              setDetectionEvents(prev => [det, ...prev.slice(0, 50)]);
+
+              const locNote = det.observation_location 
+                ? ` • Loc: [${det.observation_location.latitude.toFixed(4)}, ${det.observation_location.longitude.toFixed(4)}]`
+                : '';
+
               setEventLog(prev => [
                 {
                   time: now,
-                  text: `AERIS Vision AI: ${det.display_name} (${confPct}% Conf) • CAM-01`,
+                  text: `AERIS AI: ${det.display_name} (${confPct}% Conf) [${det.priority || 'HIGH'}]${locNote}`,
                   color: det.class === 'person' ? 'green' : 'amber'
                 },
                 ...prev.slice(0, 40)
@@ -99,18 +141,18 @@ export default function App() {
         };
 
         ws.onerror = () => {
-          if (!pollTimer) pollTimer = setInterval(fetchInitialTelemetry, 2500);
+          if (!pollTimer) pollTimer = setInterval(fetchInitialData, 2500);
         };
 
         ws.onclose = () => {
-          if (!pollTimer) pollTimer = setInterval(fetchInitialTelemetry, 2500);
+          if (!pollTimer) pollTimer = setInterval(fetchInitialData, 2500);
         };
       } catch (e) {
-        pollTimer = setInterval(fetchInitialTelemetry, 2500);
+        pollTimer = setInterval(fetchInitialData, 2500);
       }
     };
 
-    fetchInitialTelemetry();
+    fetchInitialData();
     connectWS();
 
     return () => {
@@ -119,7 +161,7 @@ export default function App() {
     };
   }, [backendUrl, wsUrl]);
 
-  // 2. Automated Backtracking Recovery Demo Engine
+  // 3. Automated Failover Demo Engine
   useEffect(() => {
     let timer;
     if (isPlayingAutoDemo) {
@@ -139,7 +181,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [isPlayingAutoDemo, simulationMode]);
 
-  // 3. Dynamic Disaster Zone Switcher
+  // 4. Dynamic Disaster Zone Switcher
   const handleSelectZone = async (zoneId) => {
     setSelectedZoneId(zoneId);
     const zone = DISASTER_ZONES.find(z => z.id === zoneId);
@@ -171,12 +213,12 @@ export default function App() {
 
     setEventLog(prev => [
       { time: now, text: `Operational Disaster Zone Switched to: ${zone.name}`, color: "blue" },
-      { time: now, text: `Autonomous Search Pattern Loaded • Coordinates: ${zone.coordinatesFormatted}`, color: "green" },
+      { time: now, text: `Search Pattern Loaded • Region: ${zone.region}`, color: "green" },
       ...prev
     ]);
   };
 
-  // 4. Failover & Backtracking Simulation Mode
+  // 5. Failover & Backtracking Simulation Mode
   const handleSetSimulationMode = async (mode) => {
     setSimulationMode(mode);
     const now = new Date().toISOString().substring(11, 19);
@@ -195,58 +237,53 @@ export default function App() {
       setMissionState(prev => ({
         ...prev,
         connectionState: 'OFFLINE_MODE',
-        bufferedEventsCount: 24,
-        signalLostTime: '02:14 AGO'
+        systemStatus: 'WARNING',
+        signalLostTime: 'JUST NOW'
       }));
       setEventLog(prev => [
-        { time: now, text: "⚠ RF Signal Lost (Mountain Gorge Obstruction) • Local Edge AI Autonomous Mode Active", color: "red" },
-        { time: now, text: "Edge AI Buffering Critical Video & Detection Data to NVMe Storage (24 Events)", color: "amber" },
+        { time: now, text: "COMMUNICATION LINK FAILURE • RSSI Dropped to 0 dBm", color: "red" },
+        { time: now, text: "Failsafe Triggered: Switching to Autonomous Edge Recovery Mode", color: "amber" },
         ...prev
       ]);
     } else if (mode === 'BACKTRACKING') {
       setMissionState(prev => ({
         ...prev,
         connectionState: 'BACKTRACKING',
-        backtrackingProgress: 72,
-        checkpoint: activeZone.lastConnectedCheckpoint
+        systemStatus: 'AUTONOMOUS',
+        flightMode: 'AUTO_RETURN'
       }));
       setEventLog(prev => [
-        { time: now, text: `Autonomous Backtracking Engaged • Reversing along recorded path to ${activeZone.lastConnectedCheckpoint} (72%)`, color: "amber" },
+        { time: now, text: "Executing Reverse Path Navigation to Last Known Connected Point", color: "amber" },
         ...prev
       ]);
     } else if (mode === 'RECONNECTED') {
       setMissionState(prev => ({
         ...prev,
         connectionState: 'CONNECTED',
-        bufferedEventsCount: 0
+        systemStatus: 'ONLINE',
+        flightMode: 'AUTO',
+        signalLostTime: 'RESTORED'
       }));
       setEventLog(prev => [
-        { time: now, text: `5.8 GHz Mesh Link Restored at ${activeZone.lastConnectedCheckpoint} • Transmitting Buffered Telemetry`, color: "green" },
-        { time: now, text: "Data Synchronization Complete • 100% Data Integrity Verified", color: "green" },
-        ...prev
-      ]);
-    } else if (mode === 'DETECTION') {
-      setEventLog(prev => [
-        { time: now, text: `YOLO AI Detection: Target Confirmed (${activeZone.shortName})`, color: "green" },
+        { time: now, text: "LINK RESTORED at Checkpoint CP-03 • Signal 5.8 GHz Solid", color: "green" },
         ...prev
       ]);
     } else {
       setMissionState(prev => ({
         ...prev,
         connectionState: 'CONNECTED',
-        bufferedEventsCount: 0
+        systemStatus: 'ONLINE',
+        flightMode: 'AUTO'
       }));
       setEventLog(prev => [
-        { time: now, text: "Autonomous Search Pattern Resumed • Mission Status Nominal", color: "green" },
+        { time: now, text: "Mission Mode Reset to Normal Auto-Pilot", color: "blue" },
         ...prev
       ]);
     }
   };
 
-  // 5. Operator Command Triggers
   const handleActionTrigger = async (action) => {
     const now = new Date().toISOString().substring(11, 19);
-
     try {
       await fetch(`${backendUrl}/api/mission/command`, {
         method: 'POST',
@@ -254,28 +291,27 @@ export default function App() {
         body: JSON.stringify({ action })
       });
     } catch (e) {
-      console.debug("Backend action sync:", e);
+      console.debug("Backend command sync:", e);
     }
 
     if (action === 'PAUSE_MISSION') {
-      setEventLog(prev => [{ time: now, text: `Mission Paused • Loitering at ${activeZone.altitude}m AGL`, color: "amber" }, ...prev]);
+      setEventLog(prev => [{ time: now, text: "Operator Command: AERIS-01 Mission Suspended • Hovering", color: "amber" }, ...prev]);
     } else if (action === 'RESUME_MISSION') {
-      setEventLog(prev => [{ time: now, text: "Mission Resumed • Navigating to Waypoint", color: "green" }, ...prev]);
+      setEventLog(prev => [{ time: now, text: "Operator Command: AERIS-01 Mission Resumed", color: "green" }, ...prev]);
     } else if (action === 'RETURN_TO_BASE') {
-      setEventLog(prev => [{ time: now, text: "RTL Command Issued • Returning to Staging Heli-Pad LZ", color: "blue" }, ...prev]);
+      setEventLog(prev => [{ time: now, text: "Operator Command: Return-to-Base (RTL) Initiated", color: "red" }, ...prev]);
     } else if (action === 'MARK_LOCATION') {
-      setEventLog(prev => [{ time: now, text: `Geo-Marker Dropped at ${activeZone.coordinatesFormatted}`, color: "blue" }, ...prev]);
-    } else if (action === 'MANUAL_OVERRIDE_ACTIVE') {
-      setEventLog(prev => [{ time: now, text: "EMERGENCY MANUAL OVERRIDE ENGAGED", color: "red" }, ...prev]);
+      const locText = deviceLocation ? `[${deviceLocation.latitude.toFixed(5)}, ${deviceLocation.longitude.toFixed(5)}]` : 'Current Fix';
+      setEventLog(prev => [{ time: now, text: `Tactical Waypoint Logged at: ${locText}`, color: "blue" }, ...prev]);
     }
   };
 
-  const isOffline = simulationMode === 'SIGNAL_LOSS' || missionState.connectionState === 'OFFLINE_MODE';
-  const isBacktracking = simulationMode === 'BACKTRACKING' || missionState.connectionState === 'BACKTRACKING';
+  const isOffline = simulationMode === 'SIGNAL_LOSS';
+  const isBacktracking = simulationMode === 'BACKTRACKING';
 
   return (
-    <div className="h-screen w-screen bg-[#070909] text-[#F2F4F3] flex flex-col overflow-hidden font-sans select-none">
-      {/* 1. TOP GLOBAL AERIS NAVIGATION BAR WITH AREA SELECTOR */}
+    <div className="h-screen w-screen flex flex-col bg-[#07090A] text-aeris-textPrimary overflow-hidden font-sans select-none">
+      {/* 1. TOP AERIS NAVIGATION BAR */}
       <Navigation 
         activeTab={activeTab}
         onSelectTab={setActiveTab}
@@ -312,6 +348,8 @@ export default function App() {
                   <div className="col-span-3 h-full min-h-0">
                     <MissionTelemetry 
                       missionState={missionState}
+                      deviceLocation={deviceLocation}
+                      locationStatus={locationStatus}
                       isOffline={isOffline}
                       isBacktracking={isBacktracking}
                     />
@@ -319,13 +357,13 @@ export default function App() {
                   <div className="col-span-5 h-full min-h-0 shadow-2xl">
                     <LiveDisasterMap 
                       missionState={missionState}
-                      checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
-                      flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
+                      deviceLocation={deviceLocation}
+                      locationStatus={locationStatus}
+                      locationPath={locationPath}
+                      detectionEvents={detectionEvents}
                       survivors={SURVIVORS_LIST}
                       hazards={HAZARDS_LIST}
                       heatmapData={RISK_HEATMAP_DATA}
-                      isOffline={isOffline}
-                      isBacktracking={isBacktracking}
                     />
                   </div>
                   <div className="col-span-4 h-full min-h-0">
@@ -337,13 +375,13 @@ export default function App() {
                   <div className="col-span-4 h-full min-h-0 shadow-2xl">
                     <LiveDisasterMap 
                       missionState={missionState}
-                      checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
-                      flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
+                      deviceLocation={deviceLocation}
+                      locationStatus={locationStatus}
+                      locationPath={locationPath}
+                      detectionEvents={detectionEvents}
                       survivors={SURVIVORS_LIST}
                       hazards={HAZARDS_LIST}
                       heatmapData={RISK_HEATMAP_DATA}
-                      isOffline={isOffline}
-                      isBacktracking={isBacktracking}
                     />
                   </div>
                   <div className="col-span-8 h-full min-h-0">
@@ -355,13 +393,13 @@ export default function App() {
                   <div className="col-span-8 h-full min-h-0 shadow-2xl">
                     <LiveDisasterMap 
                       missionState={missionState}
-                      checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
-                      flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
+                      deviceLocation={deviceLocation}
+                      locationStatus={locationStatus}
+                      locationPath={locationPath}
+                      detectionEvents={detectionEvents}
                       survivors={SURVIVORS_LIST}
                       hazards={HAZARDS_LIST}
                       heatmapData={RISK_HEATMAP_DATA}
-                      isOffline={isOffline}
-                      isBacktracking={isBacktracking}
                     />
                   </div>
                   <div className="col-span-4 h-full min-h-0">
@@ -374,13 +412,13 @@ export default function App() {
                   <div className="col-span-6 h-full min-h-0 shadow-2xl">
                     <LiveDisasterMap 
                       missionState={missionState}
-                      checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
-                      flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
+                      deviceLocation={deviceLocation}
+                      locationStatus={locationStatus}
+                      locationPath={locationPath}
+                      detectionEvents={detectionEvents}
                       survivors={SURVIVORS_LIST}
                       hazards={HAZARDS_LIST}
                       heatmapData={RISK_HEATMAP_DATA}
-                      isOffline={isOffline}
-                      isBacktracking={isBacktracking}
                     />
                   </div>
                   <div className="col-span-6 h-full min-h-0 shadow-2xl">
@@ -397,7 +435,7 @@ export default function App() {
               </div>
 
               <div className="col-span-4 h-full min-h-0">
-                <AIDetectionsPanel />
+                <AIDetectionsPanel onDetectionsUpdate={setDetectionEvents} />
               </div>
 
               <div className="col-span-3 h-full min-h-0">
@@ -418,24 +456,30 @@ export default function App() {
               position: { altitudeAgl: missionState.altitude, groundSpeed: missionState.speed },
               battery: { percentage: Math.round(missionState.battery) }
             }}
-            isOfflineMode={isOffline || isBacktracking}
+            isOfflineMode={isOffline}
+            deviceLocation={deviceLocation}
+            locationStatus={locationStatus}
           />
         </div>
       ) : activeTab === 'aeris01-operations' ? (
-        /* AERIS-01 SYSTEM OPERATIONS & UAV HEALTH VIEW */
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <AERIS01OperationsView />
-        </div>
+        <AERIS01OperationsView 
+          missionState={missionState}
+          activeZone={activeZone}
+          onBack={() => setActiveTab('live-mission')}
+        />
       ) : activeTab === 'incidents' ? (
-        /* INCIDENT RESPONSE & AI ALERT MANAGEMENT VIEW */
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <IncidentResponseView />
-        </div>
+        <IncidentResponseView 
+          survivors={SURVIVORS_LIST}
+          hazards={HAZARDS_LIST}
+          activeZone={activeZone}
+          onBack={() => setActiveTab('live-mission')}
+        />
       ) : (
-        /* MISSION INTELLIGENCE & SATELLITE HEATMAP VIEW */
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <MissionIntelligenceView />
-        </div>
+        <MissionIntelligenceView 
+          missionState={missionState}
+          activeZone={activeZone}
+          onBack={() => setActiveTab('live-mission')}
+        />
       )}
     </div>
   );
