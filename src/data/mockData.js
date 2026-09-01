@@ -221,3 +221,9 @@ export const CHRONOLOGICAL_EVENTS = [
   { time: "14:20:00", text: "Autonomous search pattern Sector B initiated", color: "green" },
   { time: "14:15:30", text: "Mission Start • Ingress from Base Staging LZ", color: "blue" },
 ];
+
+export const INITIAL_EVENT_LOG = CHRONOLOGICAL_EVENTS;
+export const DEFAULT_MISSION_STATE = INITIAL_MISSION_STATE;
+export { DISASTER_ZONES } from './operationalAreas';
+
+

@@ -15,9 +15,10 @@ import AERIS01OperationsView from './components/operations/AERIS01OperationsView
 import IncidentResponseView from './components/incidents/IncidentResponseView';
 import MissionIntelligenceView from './components/analytics/MissionIntelligenceView';
 
+import { DISASTER_ZONES } from './data/operationalAreas';
 import { 
   DEFAULT_MISSION_STATE, 
-  DISASTER_ZONES,
+  INITIAL_MISSION_STATE,
   CHECKPOINTS_ROUTE, 
   FLIGHT_PATHS, 
   SURVIVORS_LIST, 
