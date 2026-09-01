@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Navigation from './components/Navigation.jsx';
+import MissionPlanningView from './components/planning/MissionPlanningView.jsx';
 import AERIS01OperationsView from './components/operations/AERIS01OperationsView.jsx';
 import IncidentResponseView from './components/incidents/IncidentResponseView.jsx';
 import MissionIntelligenceView from './components/analytics/MissionIntelligenceView.jsx';
@@ -27,7 +28,7 @@ import {
 } from './data/mockData.js';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('aeris01-operations'); // 'aeris01-operations' | 'live-mission' | 'incidents' | 'intelligence'
+  const [activeTab, setActiveTab] = useState('planning'); // 'planning' | 'aeris01-operations' | 'live-mission' | 'incidents' | 'intelligence'
   const [simulationMode, setSimulationMode] = useState('NORMAL');
   const [missionState, setMissionState] = useState(INITIAL_MISSION_STATE);
   const [eventLog, setEventLog] = useState(CHRONOLOGICAL_EVENTS);
@@ -109,7 +110,14 @@ export default function App() {
       />
 
       {/* 2. MAIN APPLICATION VIEWS */}
-      {activeTab === 'aeris01-operations' ? (
+      {activeTab === 'planning' ? (
+        /* MISSION PLANNING VIEW (3-COLUMN ROUTE BUILDER & AUTONOMY CONFIG) */
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <MissionPlanningView 
+            onNavigateToLiveMission={() => setActiveTab('live-mission')}
+          />
+        </div>
+      ) : activeTab === 'aeris01-operations' ? (
         /* AERIS-01 SYSTEM OPERATIONS & UAV HEALTH VIEW */
         <div className="flex-1 min-h-0 overflow-hidden">
           <AERIS01OperationsView />

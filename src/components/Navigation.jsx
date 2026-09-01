@@ -9,11 +9,14 @@ import {
   Bell, 
   User,
   Radio,
-  Sliders
+  Sliders,
+  MapPin,
+  Route
 } from 'lucide-react';
 
 export default function Navigation({ activeTab, onSelectTab }) {
   const navItems = [
+    { id: 'planning', label: 'Mission Planning', icon: Route, badge: 'PLAN' },
     { id: 'aeris01-operations', label: 'AERIS-01 Operations', icon: Sliders, badge: 'HEALTH' },
     { id: 'live-mission', label: 'Live Mission Command', icon: Compass },
     { id: 'incidents', label: 'Incidents / Alerts', icon: ShieldAlert, badge: '3' },
@@ -26,7 +29,7 @@ export default function Navigation({ activeTab, onSelectTab }) {
       <div className="flex items-center space-x-5">
         <div 
           className="flex items-center space-x-2.5 cursor-pointer" 
-          onClick={() => onSelectTab('aeris01-operations')}
+          onClick={() => onSelectTab('planning')}
         >
           <div className="w-8 h-8 rounded-lg bg-[#15191C] border border-white/10 flex items-center justify-center shadow-inner">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -68,11 +71,13 @@ export default function Navigation({ activeTab, onSelectTab }) {
                 <span>{item.label}</span>
                 {item.badge && (
                   <span className={`text-[8px] px-1.5 py-0.2 rounded-full font-bold ${
-                    item.badge === 'HEALTH'
-                      ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
-                      : item.badge === 'AI' 
-                        ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
-                        : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
+                    item.badge === 'PLAN'
+                      ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
+                      : item.badge === 'HEALTH'
+                        ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
+                        : item.badge === 'AI' 
+                          ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
+                          : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
                   }`}>
                     {item.badge}
                   </span>
@@ -89,7 +94,7 @@ export default function Navigation({ activeTab, onSelectTab }) {
         <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-pill bg-[#15191C] border border-white/5 text-[#E8ECEF]">
           <span className="w-1.5 h-1.5 rounded-full bg-[#63C174] shadow-[0_0_8px_rgba(99,193,116,0.6)]"></span>
           <span className="text-[10px] tracking-wider text-[#8B949E] hidden sm:inline">UAV-01:</span>
-          <span className="text-[10px] font-bold text-[#63C174]">● NOMINAL</span>
+          <span className="text-[10px] font-bold text-[#63C174]">● READY</span>
         </div>
 
         {/* 5.8 GHz Mesh Ground Link */}
