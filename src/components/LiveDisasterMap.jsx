@@ -26,14 +26,14 @@ const createAeroDroneIcon = (heading, isOffline) => {
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
         <!-- Altitude and Callsign Tag -->
-        <div style="background: #111516; border: 1px solid ${strokeColor}; color: #F2F4F3; font-family: monospace; font-size: 8.5px; font-weight: 700; padding: 1px 5px; border-radius: 9999px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 10px ${pulseColor}; letter-spacing: 0.5px;">
+        <div style="background: #111516; border: 1px solid ${strokeColor}; color: #F2F4F3; font-family: monospace; font-size: 8px; font-weight: 700; padding: 1px 4px; border-radius: 9999px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 10px ${pulseColor}; letter-spacing: 0.5px;">
           AERIS-01 • 42.5m
         </div>
         <!-- Drone Center Disc with Heading Arrow -->
-        <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
-          <div style="position: absolute; width: 32px; height: 32px; border-radius: 50%; background: ${pulseColor}; animation: ping-subtle 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="position: absolute; width: 26px; height: 26px; border-radius: 50%; background: #070909; border: 2px solid ${strokeColor}; display: flex; align-items: center; justify-content: center; transform: rotate(${heading}deg); box-shadow: 0 0 12px ${strokeColor};">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="${strokeColor}">
+        <div style="position: relative; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 30px; height: 30px; border-radius: 50%; background: ${pulseColor}; animation: ping-subtle 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="position: absolute; width: 24px; height: 24px; border-radius: 50%; background: #070909; border: 2px solid ${strokeColor}; display: flex; align-items: center; justify-content: center; transform: rotate(${heading}deg); box-shadow: 0 0 12px ${strokeColor};">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="${strokeColor}">
               <polygon points="12 2 20 20 12 16 4 20 12 2"></polygon>
             </svg>
           </div>
@@ -41,9 +41,9 @@ const createAeroDroneIcon = (heading, isOffline) => {
       </div>
     `,
     className: 'aeris-drone-marker',
-    iconSize: [80, 52],
-    iconAnchor: [40, 36],
-    popupAnchor: [0, -36]
+    iconSize: [80, 48],
+    iconAnchor: [40, 34],
+    popupAnchor: [0, -34]
   });
 };
 
@@ -52,28 +52,28 @@ const createCheckpointIcon = (cp) => {
   const isDone = cp.status === 'COMPLETED';
   const isLast = cp.isLastConnected;
   const borderColor = isLast ? '#62C370' : isDone ? '#3B8EDB' : '#58605E';
-  const bg = isLast ? 'rgba(98, 195, 112, 0.2)' : isDone ? '#181D1E' : '#0B0E0F';
+  const bg = isLast ? 'rgba(98, 195, 112, 0.25)' : isDone ? '#181D1E' : '#0B0E0F';
 
   return L.divIcon({
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
         ${isLast ? `
-          <div style="background: #111516; border: 1px solid #62C370; color: #62C370; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 0.5px 4px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; display: flex; align-items: center; gap: 2px;">
+          <div style="background: #111516; border: 1px solid #62C370; color: #62C370; font-family: monospace; font-size: 7px; font-weight: 700; padding: 0.5px 3px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; display: flex; align-items: center; gap: 2px;">
             <span>📶 LAST CONNECTED</span>
           </div>
         ` : ''}
-        <div style="width: 22px; height: 22px; border-radius: 50%; background: ${bg}; border: 1.5px solid ${borderColor}; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 9px; font-weight: bold; color: ${isDone ? '#F2F4F3' : '#8C9492'}; box-shadow: 0 0 8px ${isLast ? 'rgba(98,195,112,0.6)' : 'rgba(59,142,219,0.3)'};">
+        <div style="width: 20px; height: 20px; border-radius: 50%; background: ${bg}; border: 1.5px solid ${borderColor}; display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 8.5px; font-weight: bold; color: ${isDone ? '#F2F4F3' : '#8C9492'}; box-shadow: 0 0 8px ${isLast ? 'rgba(98,195,112,0.6)' : 'rgba(59,142,219,0.3)'};">
           ${cp.label.replace('CP-', '')}
         </div>
-        <div style="background: rgba(7, 9, 9, 0.85); color: #8C9492; font-family: monospace; font-size: 7.5px; padding: 0.5px 3px; border-radius: 2px; margin-top: 1px;">
+        <div style="background: rgba(7, 9, 9, 0.85); color: #8C9492; font-family: monospace; font-size: 7px; padding: 0.5px 3px; border-radius: 2px; margin-top: 1px;">
           ${cp.label} ${isDone ? '✓' : '○'}
         </div>
       </div>
     `,
     className: 'aeris-cp-marker',
-    iconSize: [110, 48],
-    iconAnchor: [55, 32],
-    popupAnchor: [0, -32]
+    iconSize: [100, 44],
+    iconAnchor: [50, 30],
+    popupAnchor: [0, -30]
   });
 };
 
@@ -82,20 +82,20 @@ const createSurvivorMarker = (surv) => {
   return L.divIcon({
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
-        <div style="background: #111516; border: 1px solid #E2A24C; color: #E2A24C; font-family: monospace; font-size: 8px; font-weight: 700; padding: 0.5px 4px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 6px rgba(226,162,76,0.6);">
+        <div style="background: #111516; border: 1px solid #E2A24C; color: #E2A24C; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 0.5px 3px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 6px rgba(226,162,76,0.6);">
           👤 ${surv.confidence}% [${surv.priority.substring(0,4)}]
         </div>
-        <div style="width: 26px; height: 26px; border-radius: 50%; background: rgba(226, 162, 76, 0.25); border: 2px solid #E2A24C; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(226, 162, 76, 0.8);">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="#E2A24C">
+        <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(226, 162, 76, 0.25); border: 2px solid #E2A24C; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(226, 162, 76, 0.8);">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="#E2A24C">
             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
           </svg>
         </div>
       </div>
     `,
     className: 'aeris-survivor-marker',
-    iconSize: [80, 48],
-    iconAnchor: [40, 32],
-    popupAnchor: [0, -32]
+    iconSize: [70, 44],
+    iconAnchor: [35, 28],
+    popupAnchor: [0, -28]
   });
 };
 
@@ -117,20 +117,20 @@ const createHazardMarker = (haz) => {
   return L.divIcon({
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
-        <div style="background: #111516; border: 1px solid ${color}; color: ${color}; font-family: monospace; font-size: 8px; font-weight: 700; padding: 0.5px 4px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 6px ${color}60;">
-          ${haz.label.substring(0, 14)}
+        <div style="background: #111516; border: 1px solid ${color}; color: ${color}; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 0.5px 3px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 6px ${color}60;">
+          ${haz.label.substring(0, 12)}
         </div>
-        <div style="width: 26px; height: 26px; border-radius: 50%; background: ${color}25; border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px ${color}80;">
-          <svg width="14" height="14" viewBox="0 0 24 24">
+        <div style="width: 24px; height: 24px; border-radius: 50%; background: ${color}25; border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px ${color}80;">
+          <svg width="13" height="13" viewBox="0 0 24 24">
             ${iconSvg}
           </svg>
         </div>
       </div>
     `,
     className: 'aeris-hazard-marker',
-    iconSize: [90, 48],
-    iconAnchor: [45, 32],
-    popupAnchor: [0, -32]
+    iconSize: [80, 44],
+    iconAnchor: [40, 28],
+    popupAnchor: [0, -28]
   });
 };
 
@@ -168,31 +168,31 @@ export default function LiveDisasterMap({
   const dronePos = [telemetry.position.lat, telemetry.position.lng];
 
   return (
-    <div className="flex-1 h-full aeris-panel-container flex flex-col overflow-hidden relative select-none">
+    <div className="w-full h-full aeris-panel-container flex flex-col overflow-hidden relative select-none">
       {/* 1. Map Top Control Bar */}
-      <div className="h-11 px-4 bg-aeris-panel border-b border-aeris-border flex items-center justify-between z-10 shrink-0">
-        <div className="flex items-center space-x-2">
-          <Navigation className="w-4 h-4 text-aeris-cyan animate-pulse" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider font-mono text-aeris-textPrimary">
+      <div className="h-9 px-3 bg-[#0E1213] border-b border-aeris-border flex items-center justify-between z-10 shrink-0">
+        <div className="flex items-center space-x-1.5">
+          <Navigation className="w-3.5 h-3.5 text-aeris-cyan animate-pulse" />
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider font-mono text-aeris-textPrimary">
             Live Disaster Map
           </h2>
-          <span className="text-[10px] font-mono text-aeris-textMuted hidden sm:inline">
+          <span className="text-[9px] font-mono text-aeris-textMuted hidden sm:inline">
             (CHAMOLI SECTOR 4B)
           </span>
         </div>
 
         {/* Small Layer Pills (ALL, ROUTE, CHECKPOINTS, SURVIVORS, HAZARDS, HEAT MAP) */}
-        <div className="flex items-center space-x-1 text-[10px] font-mono">
+        <div className="flex items-center space-x-1 text-[9.5px] font-mono">
           <button
             onClick={setAllLayers}
-            className="px-2 py-0.5 rounded-pill bg-aeris-surface hover:bg-aeris-surfaceHover text-aeris-textSecondary border border-aeris-border transition-colors"
+            className="px-1.5 py-0.5 rounded-pill bg-aeris-surface hover:bg-aeris-surfaceHover text-aeris-textSecondary border border-aeris-border transition-colors"
           >
             ALL
           </button>
 
           <button
             onClick={() => toggleLayer('route')}
-            className={`px-2 py-0.5 rounded-pill border transition-colors ${
+            className={`px-1.5 py-0.5 rounded-pill border transition-colors ${
               activeLayers.route 
                 ? 'bg-aeris-blue/20 border-aeris-blue text-aeris-blue font-bold' 
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
@@ -203,7 +203,7 @@ export default function LiveDisasterMap({
 
           <button
             onClick={() => toggleLayer('checkpoints')}
-            className={`px-2 py-0.5 rounded-pill border transition-colors ${
+            className={`px-1.5 py-0.5 rounded-pill border transition-colors ${
               activeLayers.checkpoints 
                 ? 'bg-aeris-green/20 border-aeris-green text-aeris-green font-bold' 
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
@@ -214,7 +214,7 @@ export default function LiveDisasterMap({
 
           <button
             onClick={() => toggleLayer('survivors')}
-            className={`px-2 py-0.5 rounded-pill border transition-colors ${
+            className={`px-1.5 py-0.5 rounded-pill border transition-colors ${
               activeLayers.survivors 
                 ? 'bg-aeris-amber/20 border-aeris-amber text-aeris-amber font-bold' 
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
@@ -225,7 +225,7 @@ export default function LiveDisasterMap({
 
           <button
             onClick={() => toggleLayer('hazards')}
-            className={`px-2 py-0.5 rounded-pill border transition-colors ${
+            className={`px-1.5 py-0.5 rounded-pill border transition-colors ${
               activeLayers.hazards 
                 ? 'bg-aeris-red/20 border-aeris-red text-aeris-red font-bold' 
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
@@ -236,7 +236,7 @@ export default function LiveDisasterMap({
 
           <button
             onClick={() => toggleLayer('heatmap')}
-            className={`px-2 py-0.5 rounded-pill border transition-colors ${
+            className={`px-1.5 py-0.5 rounded-pill border transition-colors ${
               activeLayers.heatmap 
                 ? 'bg-aeris-purple/25 border-aeris-purple text-aeris-purple font-bold shadow-sm' 
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
@@ -247,8 +247,8 @@ export default function LiveDisasterMap({
         </div>
       </div>
 
-      {/* 2. Main Leaflet Satellite Map Canvas */}
-      <div className="flex-1 relative w-full h-full">
+      {/* 2. Main Leaflet Satellite Map Canvas (Fills entire container) */}
+      <div className="flex-1 w-full h-full relative min-h-0">
         <MapContainer
           center={dronePos}
           zoom={15}
@@ -422,33 +422,33 @@ export default function LiveDisasterMap({
 
         {/* 9. Heat Map Legend (Compact Bottom-Left Overlay) */}
         {activeLayers.heatmap && (
-          <div className="absolute bottom-3 left-3 z-[1000] bg-aeris-panel/95 border border-aeris-border p-2.5 rounded-card backdrop-blur-md font-mono text-[10px] shadow-lg space-y-1.5 pointer-events-auto">
-            <div className="text-aeris-textMuted font-bold uppercase tracking-wider text-[9px] border-b border-white/5 pb-1">
+          <div className="absolute bottom-2.5 left-2.5 z-[1000] bg-[#0B0E0F]/95 border border-aeris-border p-2 rounded-card backdrop-blur-md font-mono text-[9.5px] shadow-lg space-y-1 pointer-events-auto">
+            <div className="text-aeris-textMuted font-bold uppercase tracking-wider text-[8.5px] border-b border-white/5 pb-0.5">
               RISK INTENSITY
             </div>
-            <div className="flex items-center space-x-3 text-[10px]">
+            <div className="flex items-center space-x-2.5 text-[9.5px]">
               <span className="flex items-center text-aeris-green">
-                <span className="w-2 h-2 rounded-full bg-aeris-green mr-1"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-aeris-green mr-1"></span>
                 LOW
               </span>
               <span className="flex items-center text-aeris-purple">
-                <span className="w-2 h-2 rounded-full bg-aeris-purple mr-1"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-aeris-purple mr-1"></span>
                 MED
               </span>
               <span className="flex items-center text-aeris-amber">
-                <span className="w-2 h-2 rounded-full bg-aeris-amber mr-1"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-aeris-amber mr-1"></span>
                 HIGH
               </span>
               <span className="flex items-center text-aeris-red">
-                <span className="w-2 h-2 rounded-full bg-aeris-red mr-1 shadow-glow-red"></span>
-                CRITICAL
+                <span className="w-1.5 h-1.5 rounded-full bg-aeris-red mr-1 shadow-glow-red"></span>
+                CRIT
               </span>
             </div>
           </div>
         )}
 
         {/* 10. Live RTK & Sector Status Overlay Bottom-Right */}
-        <div className="absolute bottom-3 right-3 z-[1000] bg-aeris-panel/95 border border-aeris-border px-3 py-1.5 rounded-card backdrop-blur-md font-mono text-[10.5px] text-aeris-textSecondary shadow-lg">
+        <div className="absolute bottom-2.5 right-2.5 z-[1000] bg-[#0B0E0F]/95 border border-aeris-border px-2.5 py-1 rounded-card backdrop-blur-md font-mono text-[9.5px] text-aeris-textSecondary shadow-lg">
           <span className="text-aeris-green font-bold">● RTK FIX</span> • WGS84 • <span className="text-aeris-cyan">LAT:</span> {telemetry.position.lat.toFixed(4)} <span className="text-aeris-cyan">LNG:</span> {telemetry.position.lng.toFixed(4)}
         </div>
       </div>

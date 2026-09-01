@@ -34,15 +34,13 @@ export default function App() {
     setIsOfflineMode(newState);
 
     if (newState) {
-      // Add event for signal lost and backtracking
       setMissionEvents(prev => [
-        { time: new Date().toISOString().substring(11, 19), label: "Signal Lost (Terrain Shadow) • Autonomous Backtracking Initiated", color: "amber", icon: "backtrack" },
+        { time: new Date().toISOString().substring(11, 19), label: "Signal Lost (Terrain Shadow) • Backtrack Initiated", color: "amber", icon: "backtrack" },
         ...prev
       ]);
     } else {
-      // Add event for reconnection
       setMissionEvents(prev => [
-        { time: new Date().toISOString().substring(11, 19), label: "Link Restored via CP-3 Mesh • Synchronizing Buffered Data", color: "green", icon: "wifi" },
+        { time: new Date().toISOString().substring(11, 19), label: "Link Restored via CP-3 Mesh • Data Synchronized", color: "green", icon: "wifi" },
         ...prev
       ]);
     }
@@ -62,68 +60,83 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-screen bg-aeris-bg text-aeris-textPrimary flex flex-col overflow-hidden font-sans select-none">
-      {/* 1. TOP HEADER (72px) */}
+    <div className="h-screen w-screen bg-[#070909] text-aeris-textPrimary flex flex-col overflow-hidden font-sans select-none">
+      {/* 1. TOP HEADER (Sleek 56px) */}
       <Header 
         metadata={MISSION_METADATA}
         isOfflineMode={isOfflineMode}
         onToggleOfflineSimulation={() => handleToggleOffline()}
       />
 
-      {/* 2. MAIN STRUCTURED DASHBOARD CONTAINER (Full Viewport Grid Layout) */}
-      <main className="flex-1 p-2.5 flex flex-col gap-2.5 min-h-0 overflow-y-auto lg:overflow-hidden">
-        {/* UPPER ROW: MISSION TELEMETRY (Left) + LIVE DISASTER MAP (Center) + RESCUE INTELLIGENCE (Right) */}
-        <section className="flex-1 flex flex-col lg:flex-row gap-2.5 min-h-[320px] lg:min-h-0">
-          {/* Left Panel: Dedicated Mission Telemetry (300px) */}
-          <MissionTelemetry 
-            telemetry={telemetry}
-            isOfflineMode={isOfflineMode}
-          />
+      {/* 2. MAIN 3-COLUMN STRUCTURED COMMAND CENTER WORKSPACE */}
+      <main className="flex-1 p-2 grid grid-cols-12 gap-2 min-h-0 overflow-hidden">
+        {/* ========================================================================= */}
+        {/* LEFT COLUMN (Cols 1-3 / ~25%): MISSION TELEMETRY & COMMS LINK             */}
+        {/* ========================================================================= */}
+        <section className="col-span-3 flex flex-col gap-2 min-h-0 h-full">
+          {/* Upper Left: Mission Telemetry (Battery, Alt, Speed, GPS, Checkpoints) */}
+          <div className="flex-[6] min-h-0">
+            <MissionTelemetry 
+              telemetry={telemetry}
+              isOfflineMode={isOfflineMode}
+            />
+          </div>
 
-          {/* Center Panel: Large Live Disaster Map (~50-55% Width, Clear & Unobstructed) */}
-          <LiveDisasterMap 
-            telemetry={telemetry}
-            checkpoints={CHECKPOINTS_LIST}
-            flightRoutes={FLIGHT_ROUTES}
-            survivors={SURVIVORS_DATA}
-            hazards={HAZARDS_DATA}
-            heatmapZones={RISK_HEATMAP_ZONES}
-            isOfflineMode={isOfflineMode}
-          />
-
-          {/* Right Panel: Dedicated Rescue Intelligence (320px) */}
-          <RescueIntelligence 
-            detections={RESCUE_INTELLIGENCE_ITEMS}
-          />
-        </section>
-
-        {/* MIDDLE ROW: LIVE CAMERA & AI FEED (Full Lower-Middle Row with RGB, Thermal, and Sensor Fusion) */}
-        <section className="shrink-0">
-          <LiveCameraFeeds 
-            fusionData={SENSOR_FUSION_DATA}
-          />
-        </section>
-
-        {/* BOTTOM ROW: COMMUNICATION & OFFLINE (1fr) + MISSION EVENTS (1.2fr) + MISSION CONTROLS (1fr) */}
-        <section className="h-[148px] shrink-0 grid grid-cols-1 md:grid-cols-12 gap-2.5">
-          {/* Communication & Offline Backtracking (Cols 1-4) */}
-          <div className="md:col-span-4 h-full">
+          {/* Lower Left: Communication & Offline Backtracking Mode */}
+          <div className="flex-[4] min-h-0">
             <CommunicationPanel 
               commData={COMMUNICATION_STATE}
               isOfflineMode={isOfflineMode}
               onToggleOffline={handleToggleOffline}
             />
           </div>
+        </section>
 
-          {/* Mission Events Chronological Timeline (Cols 5-8) */}
-          <div className="md:col-span-4 lg:col-span-5 h-full">
+        {/* ========================================================================= */}
+        {/* CENTER COLUMN (Cols 4-9 / ~50%): DOMINANT DISASTER MAP + EO/IR CAMERAS    */}
+        {/* ========================================================================= */}
+        <section className="col-span-6 flex flex-col gap-2 min-h-0 h-full">
+          {/* Dominant Upper Center: Large Live Disaster Satellite Map */}
+          <div className="flex-[6] min-h-0 relative shadow-2xl">
+            <LiveDisasterMap 
+              telemetry={telemetry}
+              checkpoints={CHECKPOINTS_LIST}
+              flightRoutes={FLIGHT_ROUTES}
+              survivors={SURVIVORS_DATA}
+              hazards={HAZARDS_DATA}
+              heatmapZones={RISK_HEATMAP_ZONES}
+              isOfflineMode={isOfflineMode}
+            />
+          </div>
+
+          {/* Lower Center: Live RGB 4K + MLX90640 Thermal EO/IR Feeds + Sensor Fusion */}
+          <div className="flex-[4] min-h-0">
+            <LiveCameraFeeds 
+              fusionData={SENSOR_FUSION_DATA}
+            />
+          </div>
+        </section>
+
+        {/* ========================================================================= */}
+        {/* RIGHT COLUMN (Cols 10-12 / ~25%): RESCUE INTELLIGENCE, EVENTS & CONTROLS  */}
+        {/* ========================================================================= */}
+        <section className="col-span-3 flex flex-col gap-2 min-h-0 h-full">
+          {/* Upper Right: Rescue Intelligence (AI Detection Triage Feed) */}
+          <div className="flex-[5] min-h-0">
+            <RescueIntelligence 
+              detections={RESCUE_INTELLIGENCE_ITEMS}
+            />
+          </div>
+
+          {/* Middle Right: Live Chronological Mission Events Timeline */}
+          <div className="flex-[3] min-h-0">
             <MissionEvents 
               events={missionEvents}
             />
           </div>
 
-          {/* Mission Controls (Cols 9-12) */}
-          <div className="md:col-span-4 lg:col-span-3 h-full">
+          {/* Bottom Right: Mission Action Controls & Emergency Override */}
+          <div className="flex-[2] min-h-0">
             <MissionControls 
               onActionTrigger={handleActionTrigger}
               isOfflineMode={isOfflineMode}
@@ -133,7 +146,7 @@ export default function App() {
         </section>
       </main>
 
-      {/* 3. SLIM PERSISTENT STATUS BAR */}
+      {/* 3. SLIM PERSISTENT STATUS BAR (30px) */}
       <BottomStatusBar 
         telemetry={telemetry}
         isOfflineMode={isOfflineMode}
