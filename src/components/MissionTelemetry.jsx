@@ -58,17 +58,21 @@ export default function MissionTelemetry({
           <div className="grid grid-cols-2 gap-1 text-[10px] my-1">
             <div>
               <span className="text-[8px] text-aeris-textMuted block">LATITUDE</span>
-              <strong className="text-[#F2F4F3]">{lat.toFixed(5)}° N</strong>
+              <strong className="text-[#F2F4F3]">
+                {Number.isFinite(lat) ? `${lat.toFixed(6)}° N` : 'AWAITING GPS'}
+              </strong>
             </div>
             <div>
               <span className="text-[8px] text-aeris-textMuted block">LONGITUDE</span>
-              <strong className="text-[#F2F4F3]">{lng.toFixed(5)}° E</strong>
+              <strong className="text-[#F2F4F3]">
+                {Number.isFinite(lng) ? `${lng.toFixed(6)}° E` : 'AWAITING GPS'}
+              </strong>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-[8.5px] text-aeris-textMuted pt-1 border-t border-white/5">
             <span>Fix: <strong className="text-aeris-green font-bold">RTK FIXED (18 Sats)</strong></span>
-            <span className="text-aeris-cyan font-bold">SIMULATOR</span>
+            <span className="text-aeris-cyan font-bold">PX4_SIMULATOR</span>
           </div>
         </div>
 

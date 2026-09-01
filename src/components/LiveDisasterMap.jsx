@@ -17,19 +17,20 @@ import {
 } from 'lucide-react';
 
 // 1. Prominent Animated AERIS-01 Simulator Drone Marker
-const createDroneMarker = (heading, altitude, speed) => {
+const createDroneMarker = (heading, altitude, speed, locationSource) => {
   const color = '#3B8EDB';
   const pulseColor = 'rgba(59, 142, 219, 0.45)';
 
   const altStr = typeof altitude === 'number' ? `${altitude.toFixed(1)}m` : altitude;
   const spdStr = typeof speed === 'number' ? `${speed.toFixed(1)}m/s` : speed;
+  const srcLabel = locationSource || 'PX4 GPS';
 
   return L.divIcon({
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
         <!-- Drone Telemetry Callout Badge -->
         <div style="background: #0B0E0F; border: 1.5px solid ${color}; color: #F2F4F3; font-family: monospace; font-size: 8px; font-weight: 700; padding: 1.5px 6px; border-radius: 9999px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 12px ${pulseColor}; letter-spacing: 0.5px;">
-          AERIS-01 • ${altStr} • ${spdStr}
+          AERIS-01 • ${srcLabel}
         </div>
         <!-- Directional Cone & Center Disc -->
         <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
@@ -76,23 +77,23 @@ const createPersonObservationIcon = (obs) => {
 };
 
 // 3. Map Pan Controller (Smoothly Centers on First Telemetry Fix & Handles Recenter Button)
-function MapController({ targetCenter, shouldRecenter, onRecenterDone }) {
+function MapController({ targetCenter, hasValidGps, shouldRecenter, onRecenterDone }) {
   const map = useMap();
   const hasInitialCenteredRef = useRef(false);
 
   useEffect(() => {
-    if (targetCenter && targetCenter[0] && targetCenter[1] && !hasInitialCenteredRef.current) {
+    if (hasValidGps && targetCenter && targetCenter[0] && targetCenter[1] && !hasInitialCenteredRef.current) {
       hasInitialCenteredRef.current = true;
       map.flyTo(targetCenter, 15, { animate: true, duration: 1.0 });
     }
-  }, [targetCenter, map]);
+  }, [targetCenter, hasValidGps, map]);
 
   useEffect(() => {
-    if (shouldRecenter && targetCenter && targetCenter[0] && targetCenter[1]) {
+    if (shouldRecenter && hasValidGps && targetCenter && targetCenter[0] && targetCenter[1]) {
       map.flyTo(targetCenter, 16, { animate: true, duration: 0.8 });
       if (onRecenterDone) onRecenterDone();
     }
-  }, [shouldRecenter, targetCenter, map, onRecenterDone]);
+  }, [shouldRecenter, hasValidGps, targetCenter, map, onRecenterDone]);
 
   return null;
 }
@@ -111,14 +112,27 @@ export default function LiveDisasterMap({
   const [showDetections, setShowDetections] = useState(true);
   const [triggerRecenter, setTriggerRecenter] = useState(false);
 
-  // Authoritative Drone Coordinates from Telemetry
-  const droneLat = dronePosition?.latitude || missionState?.lat || 30.4158;
-  const droneLng = dronePosition?.longitude || missionState?.lng || 79.3245;
-  const currentPos = [droneLat, droneLng];
+  // Authoritative Drone Coordinates & Validation
+  const droneLat = (dronePosition && dronePosition.latitude !== null && dronePosition.latitude !== undefined)
+    ? dronePosition.latitude
+    : (missionState.lat ?? missionState.latitude ?? null);
+
+  const droneLng = (dronePosition && dronePosition.longitude !== null && dronePosition.longitude !== undefined)
+    ? dronePosition.longitude
+    : (missionState.lng ?? missionState.longitude ?? null);
+
+  const hasValidGps = Number.isFinite(droneLat) && Number.isFinite(droneLng) &&
+                      droneLat >= -90 && droneLat <= 90 &&
+                      droneLng >= -180 && droneLng <= 180;
+
+  const currentPos = hasValidGps ? [droneLat, droneLng] : [30.4158, 79.3245];
 
   // Filter person observations that have valid drone coordinates
   const personObservations = detectionEvents.filter(
-    (ev) => ev.class === 'person' && ev.observation_location && ev.observation_location.latitude && ev.observation_location.longitude
+    (ev) => ev.class === 'person' && 
+            ev.observation_location && 
+            Number.isFinite(ev.observation_location.latitude) && 
+            Number.isFinite(ev.observation_location.longitude)
   );
 
   return (
@@ -131,7 +145,7 @@ export default function LiveDisasterMap({
             Live Mission Map
           </h2>
           <span className="text-[9px] font-mono text-aeris-green px-1.5 py-0.2 rounded bg-aeris-green/10 border border-aeris-green/20">
-            SIMULATOR TELEMETRY
+            PX4 SIMULATOR GPS
           </span>
         </div>
 
@@ -174,6 +188,18 @@ export default function LiveDisasterMap({
 
       {/* 2. Main Leaflet Dark Satellite Canvas */}
       <div className="flex-1 w-full h-full relative min-h-0">
+        {!hasValidGps && (
+          <div className="absolute inset-0 bg-[#07090A]/90 backdrop-blur-sm z-[2000] flex flex-col items-center justify-center text-center p-4">
+            <div className="bg-[#0B0E0F] border border-aeris-amber/50 rounded-card p-5 max-w-sm shadow-2xl space-y-2">
+              <AlertTriangle className="w-8 h-8 text-aeris-amber mx-auto animate-pulse" />
+              <h3 className="text-xs font-mono font-bold text-aeris-amber uppercase">WAITING FOR DRONE GPS</h3>
+              <p className="text-[10px] font-mono text-aeris-textSecondary">
+                Awaiting valid PX4 / Gazebo simulator GPS telemetry from <code className="text-aeris-cyan">/api/location/current</code>...
+              </p>
+            </div>
+          </div>
+        )}
+
         <MapContainer
           center={currentPos}
           zoom={15}
@@ -183,6 +209,7 @@ export default function LiveDisasterMap({
         >
           <MapController 
             targetCenter={currentPos}
+            hasValidGps={hasValidGps}
             shouldRecenter={triggerRecenter}
             onRecenterDone={() => setTriggerRecenter(false)}
           />
@@ -198,7 +225,7 @@ export default function LiveDisasterMap({
           {/* 3. Real Recorded Drone Flight Breadcrumb Trail */}
           {showRoute && locationPath.length > 1 && (
             <Polyline
-              positions={locationPath.map(p => [p.latitude, p.longitude])}
+              positions={locationPath.filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude)).map(p => [p.latitude, p.longitude])}
               pathOptions={{
                 color: '#3B8EDB',
                 weight: 3,
@@ -207,7 +234,7 @@ export default function LiveDisasterMap({
               }}
             >
               <Tooltip sticky direction="top" className="font-mono text-xs text-blue-300 bg-black/90">
-                DRONE PATROL FLIGHT PATH ({locationPath.length} points)
+                PX4 DRONE PATROL FLIGHT PATH ({locationPath.length} points)
               </Tooltip>
             </Polyline>
           )}
@@ -251,7 +278,7 @@ export default function LiveDisasterMap({
                     <p className="flex justify-between"><span className="text-[#8C9492]">Confidence:</span><strong className="text-aeris-green font-mono">{Math.round((obs.confidence || 0.95) * 100)}%</strong></p>
                     <p className="flex justify-between"><span className="text-[#8C9492]">Drone Position:</span><strong className="text-[#F2F4F3] font-mono">{obs.observation_location.latitude.toFixed(5)}, {obs.observation_location.longitude.toFixed(5)}</strong></p>
                     <p className="flex justify-between"><span className="text-[#8C9492]">Altitude:</span><strong className="text-[#F2F4F3] font-mono">{obs.observation_location.altitude || missionState.altitude || '42.5m'}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-cyan font-mono">SIMULATOR TELEMETRY</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-cyan font-mono">PX4 SIMULATOR</strong></p>
                     <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{new Date(obs.timestamp).toLocaleTimeString()}</strong></p>
                   </div>
                 </div>
@@ -259,31 +286,34 @@ export default function LiveDisasterMap({
             </Marker>
           ))}
 
-          {/* 6. Active AERIS-01 Simulator Drone Marker */}
-          <Marker
-            position={currentPos}
-            icon={createDroneMarker(
-              dronePosition?.heading || missionState?.heading || 142,
-              dronePosition?.altitude || missionState?.altitude || '42.5m',
-              dronePosition?.speed || missionState?.speed || '8.6 m/s'
-            )}
-          >
-            <Popup>
-              <div className="font-sans text-xs p-1 text-[#F2F4F3]">
-                <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
-                  <span className="font-bold text-aeris-cyan font-mono">{missionState.droneId || 'AERIS-01'}</span>
-                  <span className="text-aeris-green text-[9.5px] font-mono">● {missionState.flightMode || 'SEARCH'}</span>
+          {/* 6. Active AERIS-01 PX4 Simulator Drone Marker */}
+          {hasValidGps && (
+            <Marker
+              position={currentPos}
+              icon={createDroneMarker(
+                dronePosition?.heading || missionState?.heading || 142,
+                dronePosition?.altitude || missionState?.altitude || '42.5m',
+                dronePosition?.speed || missionState?.speed || '8.6 m/s',
+                dronePosition?.source || missionState?.locationSource || 'PX4 GPS'
+              )}
+            >
+              <Popup>
+                <div className="font-sans text-xs p-1 text-[#F2F4F3]">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
+                    <span className="font-bold text-aeris-cyan font-mono">{missionState.droneId || 'AERIS-01'}</span>
+                    <span className="text-aeris-green text-[9.5px] font-mono">● PX4 GPS</span>
+                  </div>
+                  <div className="space-y-1 text-[11px] font-mono">
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Lat:</span><strong>{droneLat.toFixed(6)}° N</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Lng:</span><strong>{droneLng.toFixed(6)}° E</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Alt:</span><strong className="text-aeris-cyan">{dronePosition?.altitude || missionState.altitude || '42.5m'}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Speed:</span><strong className="text-white">{dronePosition?.speed || missionState.speed || '8.6 m/s'}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-green">PX4_SIMULATOR</strong></p>
+                  </div>
                 </div>
-                <div className="space-y-1 text-[11px] font-mono">
-                  <p className="flex justify-between"><span className="text-[#8C9492]">Lat:</span><strong>{droneLat.toFixed(5)}° N</strong></p>
-                  <p className="flex justify-between"><span className="text-[#8C9492]">Lng:</span><strong>{droneLng.toFixed(5)}° E</strong></p>
-                  <p className="flex justify-between"><span className="text-[#8C9492]">Alt:</span><strong className="text-aeris-cyan">{dronePosition?.altitude || missionState.altitude || '42.5m'}</strong></p>
-                  <p className="flex justify-between"><span className="text-[#8C9492]">Speed:</span><strong className="text-white">{dronePosition?.speed || missionState.speed || '8.6 m/s'}</strong></p>
-                  <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-green">SIMULATOR TELEMETRY</strong></p>
-                </div>
-              </div>
-            </Popup>
-          </Marker>
+              </Popup>
+            </Marker>
+          )}
         </MapContainer>
 
         {/* 7. Minimal Floating Recenter & Telemetry Status (Bottom-Right) */}
@@ -292,13 +322,20 @@ export default function LiveDisasterMap({
             onClick={() => setTriggerRecenter(true)}
             className="bg-[#0B0E0F]/95 border border-aeris-cyan/40 hover:border-aeris-cyan px-2.5 py-1 rounded-card backdrop-blur-md text-aeris-cyan flex items-center space-x-1 transition-colors"
             title="Recenter Map to Drone Position"
+            disabled={!hasValidGps}
           >
             <LocateFixed className="w-3 h-3 text-aeris-cyan" />
             <span>RECENTER DRONE</span>
           </button>
 
           <div className="bg-[#0B0E0F]/95 border border-aeris-border px-2.5 py-1 rounded-card backdrop-blur-md text-aeris-textSecondary">
-            <span className="text-aeris-green font-bold">● SIMULATOR GPS</span> • LAT: {droneLat.toFixed(5)} LNG: {droneLng.toFixed(5)}
+            {hasValidGps ? (
+              <>
+                <span className="text-aeris-green font-bold">● PX4_SIMULATOR</span> • LAT: {droneLat.toFixed(6)} LNG: {droneLng.toFixed(6)}
+              </>
+            ) : (
+              <span className="text-aeris-amber font-bold">● WAITING FOR PX4 GPS</span>
+            )}
           </div>
         </div>
       </div>

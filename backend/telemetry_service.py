@@ -66,8 +66,8 @@ class TelemetryService:
         self.zone_config = DISASTER_ZONES_CONFIG[self.active_zone_id]
         
         # Authoritative Location Source
-        self.location_source = "SIMULATOR_DRONE"
-        self.location_source_label = "SIMULATOR TELEMETRY"
+        self.location_source = "PX4_SIMULATOR"
+        self.location_source_label = "PX4_SIMULATOR"
         
         # Flight State
         self.drone_id = "AERIS-01"

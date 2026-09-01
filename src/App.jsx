@@ -39,23 +39,29 @@ export default function App() {
   const [locationPath, setLocationPath] = useState([]);
 
   const activeZone = DISASTER_ZONES.find(z => z.id === selectedZoneId) || DISASTER_ZONES[0];
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://10.10.8.241:8000';
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
 
-  // 1. Centralized Authoritative Drone Position (Derived strictly from Telemetry)
+  // 1. Centralized Authoritative Drone Position (Derived strictly from PX4/Gazebo Telemetry & /api/location/current)
+  const rawLat = missionState.lat ?? missionState.latitude;
+  const rawLng = missionState.lng ?? missionState.longitude;
+
+  const isValidGps = Number.isFinite(rawLat) && Number.isFinite(rawLng) && 
+                     rawLat >= -90 && rawLat <= 90 && 
+                     rawLng >= -180 && rawLng <= 180;
+
   const dronePosition = {
-    latitude: missionState.lat !== undefined ? missionState.lat : (missionState.latitude || 30.4158),
-    longitude: missionState.lng !== undefined ? missionState.lng : (missionState.longitude || 79.3245),
-    altitude: missionState.altitude || '42.5m',
-    speed: missionState.speed || '8.6 m/s',
-    heading: missionState.heading !== undefined ? missionState.heading : 142.0,
-    source: 'SIMULATOR_DRONE',
-    locationSource: 'SIMULATOR TELEMETRY'
+    latitude: isValidGps ? rawLat : null,
+    longitude: isValidGps ? rawLng : null,
+    altitude: missionState.altitude ?? 0,
+    speed: missionState.speed ?? 0,
+    heading: missionState.heading ?? 0,
+    source: missionState.locationSource ?? 'PX4_SIMULATOR'
   };
 
-  // Record continuous simulator drone flight path
+  // Record continuous simulator drone flight path using valid GPS coordinates only
   useEffect(() => {
-    if (dronePosition.latitude && dronePosition.longitude) {
+    if (dronePosition.latitude !== null && dronePosition.longitude !== null) {
       setLocationPath(prev => {
         const last = prev[prev.length - 1];
         if (!last || Math.abs(last.latitude - dronePosition.latitude) > 0.000005 || Math.abs(last.longitude - dronePosition.longitude) > 0.000005) {
@@ -70,21 +76,58 @@ export default function App() {
     }
   }, [dronePosition.latitude, dronePosition.longitude]);
 
-  // 2. Fetch Initial Telemetry & Recorded Flight Path
+  // 2. Fetch Initial Telemetry, Explicit PX4 Location Endpoint & Recorded Flight Path
   useEffect(() => {
     let ws = null;
     let pollTimer = null;
 
     const fetchInitialData = async () => {
       try {
-        const [telemRes, pathRes] = await Promise.all([
+        const [telemRes, locationRes, pathRes] = await Promise.all([
           fetch(`${backendUrl}/api/telemetry/current`, { mode: 'cors' }),
+          fetch(`${backendUrl}/api/location/current`, { mode: 'cors' }),
           fetch(`${backendUrl}/api/location/path`, { mode: 'cors' })
         ]);
 
         if (telemRes.ok) {
           const data = await telemRes.json();
-          setMissionState(prev => ({ ...prev, ...data }));
+          setMissionState(prev => ({
+            ...prev,
+            ...data
+          }));
+        }
+
+        // Explicitly prioritize PX4 drone GPS from /api/location/current
+        if (locationRes.ok) {
+          const locationData = await locationRes.json();
+          if (locationData.location) {
+            const location = locationData.location;
+            if (
+              Number.isFinite(location.latitude) &&
+              Number.isFinite(location.longitude) &&
+              location.latitude >= -90 && location.latitude <= 90 &&
+              location.longitude >= -180 && location.longitude <= 180
+            ) {
+              setMissionState(prev => ({
+                ...prev,
+
+                // Primary coordinates
+                lat: location.latitude,
+                lng: location.longitude,
+
+                // Compatibility coordinates
+                latitude: location.latitude,
+                longitude: location.longitude,
+
+                altitude: location.altitude ?? prev.altitude,
+                speed: location.speed ?? prev.speed,
+                heading: location.heading ?? prev.heading,
+
+                locationSource: location.source || 'PX4_SIMULATOR',
+                gpsActive: true
+              }));
+            }
+          }
         }
 
         if (pathRes.ok) {
@@ -103,7 +146,7 @@ export default function App() {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          console.log("WebSocket connected to AERIS Simulator Command Stream");
+          console.log("WebSocket connected to AERIS PX4 Simulator Command Stream");
         };
 
         ws.onmessage = (event) => {
@@ -111,10 +154,81 @@ export default function App() {
             const msg = JSON.parse(event.data);
             if (msg.type === 'init') {
               if (msg.data?.telemetry) {
-                setMissionState(prev => ({ ...prev, ...msg.data.telemetry }));
+                const tData = msg.data.telemetry;
+                setMissionState(prev => {
+                  const nextState = { ...prev, ...tData };
+                  const rLat = tData.lat ?? tData.latitude;
+                  const rLng = tData.lng ?? tData.longitude;
+                  if (Number.isFinite(rLat) && Number.isFinite(rLng) &&
+                      rLat >= -90 && rLat <= 90 && rLng >= -180 && rLng <= 180) {
+                    nextState.lat = rLat;
+                    nextState.lng = rLng;
+                    nextState.latitude = rLat;
+                    nextState.longitude = rLng;
+                    nextState.locationSource = tData.source || tData.locationSource || 'PX4_SIMULATOR';
+                    nextState.gpsActive = true;
+                  }
+                  return nextState;
+                });
+              }
+              if (msg.data?.location?.location) {
+                const loc = msg.data.location.location;
+                if (Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude) &&
+                    loc.latitude >= -90 && loc.latitude <= 90 && loc.longitude >= -180 && loc.longitude <= 180) {
+                  setMissionState(prev => ({
+                    ...prev,
+                    lat: loc.latitude,
+                    lng: loc.longitude,
+                    latitude: loc.latitude,
+                    longitude: loc.longitude,
+                    altitude: loc.altitude ?? prev.altitude,
+                    speed: loc.speed ?? prev.speed,
+                    heading: loc.heading ?? prev.heading,
+                    locationSource: loc.source || 'PX4_SIMULATOR',
+                    gpsActive: true
+                  }));
+                }
               }
             } else if (msg.type === 'telemetry') {
-              setMissionState(prev => ({ ...prev, ...msg.data }));
+              const tData = msg.data;
+              if (tData) {
+                setMissionState(prev => {
+                  const nextState = { ...prev, ...tData };
+                  const rLat = tData.lat ?? tData.latitude;
+                  const rLng = tData.lng ?? tData.longitude;
+                  if (Number.isFinite(rLat) && Number.isFinite(rLng) &&
+                      rLat >= -90 && rLat <= 90 && rLng >= -180 && rLng <= 180) {
+                    nextState.lat = rLat;
+                    nextState.lng = rLng;
+                    nextState.latitude = rLat;
+                    nextState.longitude = rLng;
+                    nextState.locationSource = tData.source || tData.locationSource || 'PX4_SIMULATOR';
+                    nextState.gpsActive = true;
+                  }
+                  return nextState;
+                });
+              }
+            } else if (msg.type === 'location') {
+              const locData = msg.data;
+              if (locData && locData.latitude !== undefined && locData.longitude !== undefined) {
+                const rLat = locData.latitude;
+                const rLng = locData.longitude;
+                if (Number.isFinite(rLat) && Number.isFinite(rLng) &&
+                    rLat >= -90 && rLat <= 90 && rLng >= -180 && rLng <= 180) {
+                  setMissionState(prev => ({
+                    ...prev,
+                    lat: rLat,
+                    lng: rLng,
+                    latitude: rLat,
+                    longitude: rLng,
+                    altitude: locData.altitude ?? prev.altitude,
+                    speed: locData.speed ?? prev.speed,
+                    heading: locData.heading ?? prev.heading,
+                    locationSource: locData.source || 'PX4_SIMULATOR',
+                    gpsActive: true
+                  }));
+                }
+              }
             } else if (msg.type === 'detection') {
               const det = msg.data;
               const now = new Date().toISOString().substring(11, 19);
@@ -122,7 +236,7 @@ export default function App() {
               
               setDetectionEvents(prev => [det, ...prev.slice(0, 50)]);
 
-              const locNote = det.observation_location 
+              const locNote = (det.observation_location && det.observation_location.latitude && det.observation_location.longitude)
                 ? ` • Loc: [${det.observation_location.latitude.toFixed(4)}, ${det.observation_location.longitude.toFixed(4)}]`
                 : '';
 
@@ -301,7 +415,9 @@ export default function App() {
     } else if (action === 'RETURN_TO_BASE') {
       setEventLog(prev => [{ time: now, text: "Operator Command: Return-to-Base (RTL) Initiated", color: "red" }, ...prev]);
     } else if (action === 'MARK_LOCATION') {
-      const locText = `[${dronePosition.latitude.toFixed(5)}, ${dronePosition.longitude.toFixed(5)}]`;
+      const locText = (dronePosition.latitude && dronePosition.longitude)
+        ? `[${dronePosition.latitude.toFixed(5)}, ${dronePosition.longitude.toFixed(5)}]`
+        : 'Current Fix';
       setEventLog(prev => [{ time: now, text: `Tactical Drone Waypoint Logged at: ${locText}`, color: "blue" }, ...prev]);
     }
   };

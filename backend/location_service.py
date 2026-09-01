@@ -40,9 +40,9 @@ class LocationService:
         
         self.lock = threading.Lock()
         
-        # Authoritative Location Source: SIMULATOR_DRONE
-        self.source: str = "SIMULATOR_DRONE"
-        self.source_label: str = "SIMULATOR TELEMETRY"
+        # Authoritative Location Source: PX4_SIMULATOR
+        self.source: str = "PX4_SIMULATOR"
+        self.source_label: str = "PX4_SIMULATOR"
         self.status: str = "active"
         self.last_update: Optional[str] = None
         
@@ -57,15 +57,15 @@ class LocationService:
         
         self.broadcast_callback = None
         self._initialized = True
-        logger.info("AERIS LocationService initialized (Authoritative Source: SIMULATOR_DRONE).")
+        logger.info("AERIS LocationService initialized (Authoritative Source: PX4_SIMULATOR).")
 
     def get_current_location(self) -> Dict[str, Any]:
         """Returns the authoritative simulated drone position from TelemetryService."""
         from telemetry_service import telemetry_service
         telem = telemetry_service.get_telemetry()
         
-        lat = telem.get("lat", 30.4158)
-        lng = telem.get("lng", 79.3245)
+        lat = telem.get("lat") if telem.get("lat") is not None else telem.get("latitude")
+        lng = telem.get("lng") if telem.get("lng") is not None else telem.get("longitude")
         alt = telem.get("altitudeM", 42.5)
         spd = telem.get("speedMs", 8.6)
         hdg = telem.get("heading", 142.0)

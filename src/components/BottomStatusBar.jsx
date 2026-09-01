@@ -4,9 +4,12 @@ export default function BottomStatusBar({ telemetry, isOfflineMode, dronePositio
   const alt = String(telemetry?.position?.altitudeAgl || dronePosition?.altitude || '42.5').replace('m', '');
   const spd = String(telemetry?.position?.groundSpeed || dronePosition?.speed || '8.6').replace('m/s', '').trim();
 
-  const lat = dronePosition?.latitude || 30.4158;
-  const lng = dronePosition?.longitude || 79.3245;
-  const locDisplay = `${lat.toFixed(5)}° N, ${lng.toFixed(5)}° E`;
+  const hasGps = dronePosition && dronePosition.latitude !== null && dronePosition.longitude !== null;
+  const locDisplay = hasGps 
+    ? `${dronePosition.latitude.toFixed(6)}° N, ${dronePosition.longitude.toFixed(6)}° E`
+    : 'WAITING FOR PX4 GPS';
+
+  const sourceDisplay = dronePosition?.source || 'PX4_SIMULATOR';
 
   return (
     <footer className="h-7 bg-[#090C0D] border-t border-aeris-border px-4 flex items-center justify-between text-[10px] font-mono select-none text-aeris-textSecondary shrink-0 z-20">
@@ -22,13 +25,13 @@ export default function BottomStatusBar({ telemetry, isOfflineMode, dronePositio
         <span className="text-aeris-textMuted">|</span>
 
         <span>
-          LOCATION: <strong className="text-aeris-cyan">{locDisplay}</strong>
+          LOCATION: <strong className={hasGps ? "text-aeris-cyan" : "text-aeris-amber"}>{locDisplay}</strong>
         </span>
 
         <span className="text-aeris-textMuted">|</span>
 
         <span>
-          SOURCE: <strong className="text-aeris-green font-bold">SIMULATOR TELEMETRY</strong>
+          SOURCE: <strong className="text-aeris-green font-bold">{sourceDisplay}</strong>
         </span>
 
         <span className="text-aeris-textMuted">|</span>
@@ -54,8 +57,8 @@ export default function BottomStatusBar({ telemetry, isOfflineMode, dronePositio
 
         <span className="text-aeris-textMuted">|</span>
 
-        <span className="text-aeris-green font-medium">
-          ● SIMULATOR GPS
+        <span className={hasGps ? "text-aeris-green font-medium" : "text-aeris-amber font-medium"}>
+          ● {hasGps ? "PX4 SIMULATOR GPS" : "AWAITING PX4 GPS"}
         </span>
 
         <span className="text-aeris-textMuted">|</span>
