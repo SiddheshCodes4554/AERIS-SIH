@@ -37,6 +37,42 @@ export default function App() {
 
   // Active Selected Operational Disaster Zone
   const activeZone = DISASTER_ZONES.find(z => z.id === selectedZoneId) || DISASTER_ZONES[0];
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
+
+  // Real-Time YOLO Event Stream Listener via WebSocket
+  useEffect(() => {
+    let ws = null;
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'detection') {
+            const det = msg.data;
+            const now = new Date().toISOString().substring(11, 19);
+            const confPct = Math.round((det.confidence || 0.95) * 100);
+            setEventLog(prev => [
+              {
+                time: now,
+                text: `AERIS Vision AI: ${det.display_name} (${confPct}% Conf) • CAM-01`,
+                color: det.class === 'person' ? 'green' : 'amber'
+              },
+              ...prev.slice(0, 40)
+            ]);
+          }
+        } catch (e) {
+          console.debug("WS parse:", e);
+        }
+      };
+    } catch (e) {
+      console.debug("WS connection:", e);
+    }
+
+    return () => {
+      if (ws) ws.close();
+    };
+  }, [wsUrl]);
 
   // Automated Backtracking Recovery Demo Engine
   useEffect(() => {
@@ -122,7 +158,7 @@ export default function App() {
       ]);
     } else if (mode === 'DETECTION') {
       setEventLog(prev => [
-        { time: now, text: `YOLO AI Detection: Survivor Confirmed (96% Conf, ${activeZone.shortName})`, color: "amber" },
+        { time: now, text: `YOLO AI Detection: Person Confirmed (96% Conf, ${activeZone.shortName})`, color: "green" },
         ...prev
       ]);
     } else {
@@ -225,9 +261,7 @@ export default function App() {
               </div>
 
               <div className="col-span-3 h-full min-h-0">
-                <AIDetectionsPanel 
-                  detections={AI_DETECTIONS_LOG}
-                />
+                <AIDetectionsPanel />
               </div>
 
               <div className="col-span-3 h-full min-h-0">

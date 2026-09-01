@@ -85,7 +85,7 @@ export default function IncidentMap({
   const [isCameraError, setIsCameraError] = useState(false);
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-  const videoFeedUrl = `${backendUrl}/api/video/feed`;
+  const videoFeedUrl = `${backendUrl}/api/video/detection-feed`;
   const centerPos = [incident.lat, incident.lng];
 
   return (
@@ -265,7 +265,7 @@ export default function IncidentMap({
           <div className="px-2.5 py-1 bg-[#181D20]/90 border-b border-white/10 flex items-center justify-between text-[9.5px] font-mono">
             <span className="flex items-center text-[#FF4D3D] font-bold">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FF4D3D] mr-1 animate-pulse"></span>
-              LIVE FEED
+              YOLO LIVE FEED
             </span>
             <div className="flex items-center space-x-1">
               <span className="text-[#3B9EFF] font-bold">{incident.droneCallsign}</span>
@@ -280,7 +280,7 @@ export default function IncidentMap({
               {!isCameraError ? (
                 <img
                   src={videoFeedUrl}
-                  alt="AERIS-01 Hardware Camera Stream"
+                  alt="AERIS-01 Real YOLO Camera Stream"
                   className="w-full h-full object-cover"
                   onError={() => setIsCameraError(true)}
                 />
@@ -290,18 +290,6 @@ export default function IncidentMap({
                   <span className="text-[8.5px] font-bold text-[#F2F4F3]">● STANDBY</span>
                 </div>
               )}
-            </div>
-
-            {/* AI Bounding Box Overlay */}
-            <div className="relative z-10 flex items-center justify-center h-full pointer-events-none">
-              <div className="border-2 border-[#FF4D3D] rounded bg-[#FF4D3D]/10 p-1 flex flex-col justify-between w-28 h-16 animate-pulse shadow-[0_0_8px_rgba(255,77,61,0.5)]">
-                <span className="text-[7.5px] font-mono bg-[#FF4D3D] text-white font-bold px-1 rounded w-fit">
-                  {incident.cameraFeed.targetBox.label}
-                </span>
-                <span className="text-[7px] font-mono text-[#FF4D3D] font-bold self-end">
-                  CONF: {incident.cameraFeed.targetBox.confidence}%
-                </span>
-              </div>
             </div>
 
             {/* Bottom Overlay Telemetry */}

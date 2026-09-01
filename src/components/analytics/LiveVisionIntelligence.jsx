@@ -5,7 +5,7 @@ export default function LiveVisionIntelligence({ streams = [] }) {
   const [isError, setIsError] = useState(false);
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-  const videoFeedUrl = `${backendUrl}/api/video/feed`;
+  const videoFeedUrl = `${backendUrl}/api/video/detection-feed`;
 
   return (
     <div className="w-full bg-[#15191C] border border-white/5 rounded-2xl p-3.5 select-none font-sans shadow-xl">
@@ -34,7 +34,7 @@ export default function LiveVisionIntelligence({ streams = [] }) {
               <div className="flex items-center space-x-1.5">
                 <span className="flex items-center text-[#FF4D3D] font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#FF4D3D] mr-1 animate-pulse"></span>
-                  LIVE
+                  YOLO LIVE
                 </span>
                 <span className="text-white/40">|</span>
                 <span className="text-[#E8ECEF] font-bold">{stream.droneId}</span>
@@ -74,18 +74,6 @@ export default function LiveVisionIntelligence({ streams = [] }) {
                 </div>
                 <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-[#63C174]">
                   ALT {stream.alt} • {stream.spd}
-                </div>
-              </div>
-
-              {/* Center YOLO AI Detection Bounding Boxes */}
-              <div className="relative z-10 flex items-center justify-center h-full pointer-events-none">
-                <div className="border-2 border-[#63C174] rounded bg-[#63C174]/10 p-1 flex flex-col justify-between w-28 h-14 animate-pulse shadow-[0_0_8px_rgba(99,193,116,0.5)]">
-                  <span className="text-[7px] font-mono bg-[#63C174] text-black font-bold px-1 rounded w-fit">
-                    {stream.primaryDetection.label}
-                  </span>
-                  <span className="text-[6.5px] font-mono text-[#63C174] font-bold self-end">
-                    CONF: {stream.primaryDetection.confidence}%
-                  </span>
                 </div>
               </div>
 

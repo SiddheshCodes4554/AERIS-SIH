@@ -6,7 +6,9 @@ export default function CameraPreviewCompact() {
   const [isError, setIsError] = useState(false);
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-  const videoFeedUrl = `${backendUrl}/api/video/feed`;
+  const videoFeedUrl = cameraTab === 'RGB' 
+    ? `${backendUrl}/api/video/feed` 
+    : `${backendUrl}/api/video/detection-feed`;
 
   return (
     <div className="w-full h-full bg-[#111516] border border-white/5 rounded-2xl p-3 flex flex-col justify-between select-none font-sans overflow-hidden shadow-2xl">
@@ -44,6 +46,7 @@ export default function CameraPreviewCompact() {
         <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-black">
           {!isError ? (
             <img
+              key={cameraTab}
               src={videoFeedUrl}
               alt="AERIS-01 Hardware Camera Stream"
               className={`w-full h-full object-cover ${
@@ -67,22 +70,8 @@ export default function CameraPreviewCompact() {
             CAM-01 • 720p30
           </div>
           <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-[#63C174]">
-            IR FUSION ACTIVE
+            {cameraTab === 'RGB' ? 'OPTICAL RGB' : 'YOLOv8 DETECT ACTIVE'}
           </div>
-        </div>
-
-        {/* YOLO AI Bounding Box Overlay */}
-        <div className="relative z-10 flex items-center justify-center h-full pointer-events-none">
-          {cameraTab !== 'RGB' && (
-            <div className="border-2 border-[#63C174] rounded bg-[#63C174]/15 p-1 flex flex-col justify-between w-24 h-12 animate-pulse shadow-[0_0_8px_rgba(99,193,116,0.5)]">
-              <span className="text-[6.5px] font-mono bg-[#63C174] text-black font-bold px-1 rounded w-fit">
-                PERSON
-              </span>
-              <span className="text-[6px] font-mono text-[#63C174] font-bold self-end">
-                CONF: 96%
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Bottom Minimal HUD */}

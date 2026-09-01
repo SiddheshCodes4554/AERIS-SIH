@@ -22,11 +22,15 @@ export default function LiveAICameraFeed({ missionState }) {
   const [selectedCameraIndex, setSelectedCameraIndex] = useState(0);
   const [isSwitching, setIsSwitching] = useState(false);
   const [streamKey, setStreamKey] = useState(Date.now());
+  const [aiStatus, setAiStatus] = useState({ status: 'active', model: 'yolov8n.pt', inference_fps: 24.0 });
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-  const videoFeedUrl = `${backendUrl}/api/video/feed?t=${streamKey}`;
+  
+  // Choose correct endpoint based on mode: AI_OVERLAY -> detection-feed, RGB -> raw feed
+  const streamEndpoint = feedMode === 'RGB' ? '/api/video/feed' : '/api/video/detection-feed';
+  const videoFeedUrl = `${backendUrl}${streamEndpoint}?t=${streamKey}`;
 
-  // 1. Fetch available camera hardware devices
+  // 1. Fetch available camera devices
   const fetchDevices = async () => {
     try {
       const res = await fetch(`${backendUrl}/api/camera/devices`, { mode: 'cors' });
@@ -44,24 +48,29 @@ export default function LiveAICameraFeed({ missionState }) {
     }
   };
 
-  // 2. Poll camera status periodically
+  // 2. Poll camera status & AI metrics
   useEffect(() => {
     let isMounted = true;
 
     const checkStatus = async () => {
       try {
-        const res = await fetch(`${backendUrl}/api/camera/status`, { mode: 'cors' });
-        if (res.ok) {
-          const data = await res.json();
+        const [camRes, aiRes] = await Promise.all([
+          fetch(`${backendUrl}/api/camera/status`, { mode: 'cors' }),
+          fetch(`${backendUrl}/api/ai/status`, { mode: 'cors' })
+        ]);
+
+        if (camRes.ok) {
+          const camData = await camRes.json();
           if (isMounted) {
-            if (data.camera_available) {
-              setCameraStatus('LIVE');
-            } else {
-              setCameraStatus('UNAVAILABLE');
-            }
+            setCameraStatus(camData.camera_available ? 'LIVE' : 'UNAVAILABLE');
           }
-        } else {
-          if (isMounted) setCameraStatus('UNAVAILABLE');
+        }
+
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          if (isMounted) {
+            setAiStatus(aiData);
+          }
         }
       } catch (err) {
         if (isMounted) setCameraStatus('UNAVAILABLE');
@@ -78,7 +87,7 @@ export default function LiveAICameraFeed({ missionState }) {
     };
   }, [backendUrl, streamKey]);
 
-  // 3. Handle dynamic camera index selection
+  // 3. Handle dynamic camera selection
   const handleSelectCamera = async (newIndex) => {
     const idx = parseInt(newIndex, 10);
     setSelectedCameraIndex(idx);
@@ -93,11 +102,10 @@ export default function LiveAICameraFeed({ missionState }) {
         mode: 'cors'
       });
       if (res.ok) {
-        // Refresh stream timestamp after brief switch delay
         setTimeout(() => {
           setStreamKey(Date.now());
           setIsSwitching(false);
-        }, 500);
+        }, 600);
       }
     } catch (err) {
       console.error("Failed to switch camera:", err);
@@ -113,7 +121,7 @@ export default function LiveAICameraFeed({ missionState }) {
           <div className="flex items-center space-x-1.5">
             <Video className="w-3.5 h-3.5 text-aeris-cyan" />
             <h2 className="text-[11px] font-semibold uppercase tracking-wider font-mono text-aeris-textPrimary">
-              Live Camera Feed
+              Live AI Camera Feed
             </h2>
           </div>
 
@@ -186,10 +194,10 @@ export default function LiveAICameraFeed({ missionState }) {
 
       {/* 3. Real Drone Camera Feed Visual Canvas (16:9) */}
       <div className="flex-1 relative bg-[#06090B] rounded-card overflow-hidden border border-white/10 flex flex-col justify-between p-2.5 min-h-0">
-        {/* Real Live Hardware Video Stream */}
+        {/* Real Live Hardware Video Stream with YOLO Annotations */}
         <div className="absolute inset-0 w-full h-full overflow-hidden flex items-center justify-center bg-black">
           <img
-            key={streamKey}
+            key={`${feedMode}-${streamKey}`}
             src={videoFeedUrl}
             alt="AERIS-01 Real Hardware Webcam Stream"
             className={`w-full h-full object-cover transition-all duration-300 ${
@@ -236,41 +244,25 @@ export default function LiveAICameraFeed({ missionState }) {
           </div>
         </div>
 
-        {/* Center Detections Visual Overlays */}
-        <div className="relative z-10 flex items-center justify-center pointer-events-none h-full">
-          {/* Thermal Radiometric Palette Overlay in Thermal Mode */}
-          {feedMode === 'THERMAL' && (
-            <>
-              {/* Vertical Thermal Scale */}
-              <div className="absolute right-2 top-8 bottom-8 w-2.5 bg-gradient-to-b from-white via-yellow-400 via-red-600 via-purple-900 to-black rounded border border-white/20 flex flex-col justify-between text-[6px] font-mono text-white px-0.5">
-                <span>HOT</span>
-                <span>MED</span>
-                <span>COLD</span>
-              </div>
-            </>
-          )}
-
-          {/* YOLO AI Detection Bounding Boxes in AI_OVERLAY mode */}
-          {feedMode === 'AI_OVERLAY' && (
-            <div className="border-2 border-aeris-green rounded bg-aeris-green/10 flex flex-col justify-between p-1.5 w-36 h-28 animate-pulse shadow-glow-green">
-              <div className="bg-aeris-green text-black font-mono text-[8px] font-bold px-1 rounded w-fit">
-                PERSON DETECTED
-              </div>
-              <div className="text-right text-[7.5px] font-mono text-aeris-green font-bold">
-                CONF: 96% • SECTOR B-4
-              </div>
+        {/* Thermal Palette Scale in Thermal Mode */}
+        {feedMode === 'THERMAL' && (
+          <div className="relative z-10 flex items-center justify-end pointer-events-none h-full">
+            <div className="w-2.5 h-36 bg-gradient-to-b from-white via-yellow-400 via-red-600 via-purple-900 to-black rounded border border-white/20 flex flex-col justify-between text-[6px] font-mono text-white px-0.5">
+              <span>HOT</span>
+              <span>MED</span>
+              <span>COLD</span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Bottom HUD Bar */}
+        {/* Bottom HUD Bar showing real YOLO inference metrics */}
         <div className="relative z-10 flex items-center justify-between text-[9px] font-mono pointer-events-none">
           <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-aeris-textSecondary backdrop-blur-sm">
             REC ● LIVE • 30 FPS
           </div>
 
           <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-aeris-cyan font-bold backdrop-blur-sm">
-            YOLOv8s • 28 FPS (Orin)
+            {aiStatus.model || 'YOLOv8'} • {aiStatus.inference_fps || 24} FPS ({aiStatus.device?.toUpperCase() || 'CPU'})
           </div>
         </div>
       </div>
