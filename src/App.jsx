@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Navigation from './components/Navigation.jsx';
+import MissionIntelligenceView from './components/analytics/MissionIntelligenceView.jsx';
 import IncidentResponseView from './components/incidents/IncidentResponseView.jsx';
 
 // Live Operations Components
@@ -25,7 +26,7 @@ import {
 } from './data/mockData.js';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('incidents'); // 'incidents' | 'live-operations' | 'fleet' | 'analytics' | 'history'
+  const [activeTab, setActiveTab] = useState('intelligence'); // 'intelligence' | 'incidents' | 'command-center' | 'live-mission' | 'fleet' | 'analytics'
   const [simulationMode, setSimulationMode] = useState('NORMAL');
   const [missionState, setMissionState] = useState(INITIAL_MISSION_STATE);
   const [eventLog, setEventLog] = useState(CHRONOLOGICAL_EVENTS);
@@ -106,23 +107,26 @@ export default function App() {
         onSelectTab={setActiveTab}
       />
 
-      {/* 2. MAIN APPLICATION VIEWS */}
-      {activeTab === 'incidents' ? (
-        /* INCIDENT RESPONSE & AI ALERT MANAGEMENT VIEW */
+      {/* 2. MAIN APPLICATION VIEWS ROUTING */}
+      {activeTab === 'intelligence' || activeTab === 'analytics' ? (
+        /* PROMPT 6: MISSION INTELLIGENCE & ANALYTICS DASHBOARD */
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <MissionIntelligenceView />
+        </div>
+      ) : activeTab === 'incidents' ? (
+        /* PROMPT 5: INCIDENT RESPONSE & AI ALERT MANAGEMENT */
         <div className="flex-1 min-h-0 overflow-hidden">
           <IncidentResponseView />
         </div>
       ) : (
-        /* LIVE OPERATIONS & MISSION DISASTER COMMAND VIEW */
+        /* PROMPT 1-4: LIVE MISSION DISASTER RESPONSE OPERATIONS */
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {/* Sub Header for Live Operations */}
           <Header 
             missionState={missionState}
             simulationMode={simulationMode}
             onSetSimulationMode={handleSetSimulationMode}
           />
 
-          {/* Main Dashboard Workspace */}
           <main className="flex-1 p-2 flex flex-col gap-2 min-h-0 overflow-hidden">
             {/* Upper Operations Row */}
             <section className="flex-[7] min-h-0 grid grid-cols-12 gap-2">
@@ -180,7 +184,6 @@ export default function App() {
             </section>
           </main>
 
-          {/* Persistent Status Bar */}
           <BottomStatusBar 
             telemetry={{
               droneId: missionState.droneId,
