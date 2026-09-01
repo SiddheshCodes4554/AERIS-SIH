@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger("aeris.detection")
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Prioritized Genuine Detection Classes
 ALLOWED_CLASSES = {
@@ -28,15 +28,15 @@ ALLOWED_CLASSES = {
 
 # Distinct Tactical HUD Colors (BGR format for OpenCV)
 CLASS_COLORS = {
-    "person": (98, 195, 112),      # Neon Green #62C370
-    "car": (35, 166, 245),         # Amber #F5A623
-    "truck": (35, 166, 245),
-    "bus": (35, 166, 245),
-    "motorcycle": (35, 166, 245),
-    "bicycle": (35, 166, 245),
-    "backpack": (219, 158, 59),    # Electric Cyan #3B9EFF
-    "handbag": (219, 158, 59),
-    "suitcase": (219, 158, 59),
+    "person": (112, 220, 120),     # Neon Tactical Green
+    "car": (35, 175, 255),         # Amber Orange
+    "truck": (35, 175, 255),
+    "bus": (35, 175, 255),
+    "motorcycle": (35, 175, 255),
+    "bicycle": (35, 175, 255),
+    "backpack": (235, 160, 50),    # High-vis Cyan
+    "handbag": (235, 160, 50),
+    "suitcase": (235, 160, 50),
 }
 
 class DetectionService:
@@ -55,7 +55,7 @@ class DetectionService:
             return
         
         self.model_name = os.getenv("YOLO_MODEL", "yolov8n.pt")
-        self.confidence_threshold = float(os.getenv("YOLO_CONFIDENCE", "0.50"))
+        self.confidence_threshold = float(os.getenv("YOLO_CONFIDENCE", "0.40")) # Enhanced sensitivity
         self.high_conf_threshold = float(os.getenv("HIGH_CONFIDENCE_PERSON", "0.70"))
         self.iou_threshold = float(os.getenv("YOLO_IOU", "0.45"))
         self.img_size = int(os.getenv("YOLO_IMG_SIZE", "640"))
@@ -69,6 +69,9 @@ class DetectionService:
         self.inference_fps = 0.0
         self.inference_time_ms = 0.0
         self.total_frames_processed = 0
+        
+        # Spatial-Temporal Bounding Box Smoothing Cache {cls_name: [x1, y1, x2, y2]}
+        self.box_smoothing_cache = {}
         
         # Thread synchronization & output storage
         self.data_lock = threading.Lock()
@@ -85,7 +88,7 @@ class DetectionService:
         # In-memory detection event history (Max 100 events)
         self.event_history = deque(maxlen=100)
         self.event_cooldowns = {} # {cls_name: {"time": float, "confidence": float}}
-        self.cooldown_seconds = 3.5
+        self.cooldown_seconds = 2.5
         
         # Callback for WebSocket broadcasts
         self.event_callback = None
@@ -124,17 +127,42 @@ class DetectionService:
             logger.error(f"Failed to load YOLO model '{self.model_name}': {e}")
             self.is_model_loaded = False
 
-    def _draw_tactical_box(self, img, box, cls_name, conf):
-        """Draws high-contrast cinematic tactical bounding box with corner reticle brackets."""
-        x1, y1, x2, y2 = [int(v) for v in box]
-        color = CLASS_COLORS.get(cls_name, (98, 195, 112))
+    def _smooth_box(self, cls_name, raw_box, alpha=0.75):
+        """Applies Exponential Moving Average smoothing to stabilize bounding boxes."""
+        if cls_name not in self.box_smoothing_cache:
+            self.box_smoothing_cache[cls_name] = [float(v) for v in raw_box]
+            return [int(v) for v in raw_box]
         
-        # 1. Subtle bounding box outline
+        prev = self.box_smoothing_cache[cls_name]
+        smoothed = [
+            alpha * raw_box[i] + (1.0 - alpha) * prev[i]
+            for i in range(4)
+        ]
+        self.box_smoothing_cache[cls_name] = smoothed
+        return [int(v) for v in smoothed]
+
+    def _draw_tactical_box(self, img, box, cls_name, conf):
+        """Draws prominent, high-contrast tactical HUD bounding box with large confidence badge."""
+        x1, y1, x2, y2 = [int(v) for v in box]
+        h_img, w_img = img.shape[:2]
+        
+        # Clamp coordinates
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w_img - 1, x2), min(h_img - 1, y2)
+        
+        color = CLASS_COLORS.get(cls_name, (112, 220, 120))
+        glow_color = (color[0] // 3, color[1] // 3, color[2] // 3)
+        
+        # 1. Subtle bounding box border
+        cv2.rectangle(img, (x1, y1), (x2, y2), glow_color, 2, cv2.LINE_AA)
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 1, cv2.LINE_AA)
         
-        # 2. Corner reticle brackets
-        corner_len = min(16, max(6, (x2 - x1) // 4), max(6, (y2 - y1) // 4))
-        thick = 2
+        # 2. Prominent tactical corner reticle brackets (3px thick, length 24px)
+        bw = x2 - x1
+        bh = y2 - y1
+        corner_len = max(12, min(28, bw // 4, bh // 4))
+        thick = 3
+        
         # Top-Left
         cv2.line(img, (x1, y1), (x1 + corner_len, y1), color, thick)
         cv2.line(img, (x1, y1), (x1, y1 + corner_len), color, thick)
@@ -148,27 +176,40 @@ class DetectionService:
         cv2.line(img, (x2, y2), (x2 - corner_len, y2), color, thick)
         cv2.line(img, (x2, y2), (x2, y2 - corner_len), color, thick)
         
-        # 3. Tactical Header Badge: e.g. "PERSON 96%"
-        pct = int(conf * 100)
-        label = f"{cls_name.upper()} {pct}%"
+        # 3. Center Target Lock Crosshair
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
+        ch_len = 8
+        cv2.line(img, (cx - ch_len, cy), (cx + ch_len, cy), color, 1, cv2.LINE_AA)
+        cv2.line(img, (cx, cy - ch_len), (cx, cy + ch_len), color, 1, cv2.LINE_AA)
+        cv2.circle(img, (cx, cy), 3, color, -1, cv2.LINE_AA)
+        
+        # 4. High-Visibility Tactical Header Badge: e.g. "TARGET: PERSON  [ 94.8% ]"
+        conf_pct = conf * 100.0
+        label_text = f" {cls_name.upper()} [ {conf_pct:.1f}% ] "
+        
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.42
-        font_thick = 1
+        font_scale = 0.62
+        font_thick = 2
         
-        (w, h), baseline = cv2.getTextSize(label, font, font_scale, font_thick)
-        pill_y1 = max(0, y1 - h - 6)
-        pill_y2 = pill_y1 + h + 6
-        pill_x2 = x1 + w + 10
+        (tw, th), baseline = cv2.getTextSize(label_text, font, font_scale, font_thick)
         
-        # Background badge
-        cv2.rectangle(img, (x1, pill_y1), (pill_x2, pill_y2), (11, 14, 15), -1)
-        cv2.rectangle(img, (x1, pill_y1), (pill_x2, pill_y2), color, 1)
+        # Position badge above box if space permits, otherwise inside
+        badge_y2 = y1 - 4 if y1 - th - 12 > 0 else y1 + th + 14
+        badge_y1 = badge_y2 - th - 10
+        badge_x1 = x1
+        badge_x2 = min(w_img - 2, x1 + tw + 12)
         
-        # Label text
-        cv2.putText(img, label, (x1 + 5, pill_y2 - 4), font, font_scale, color, font_thick, cv2.LINE_AA)
+        # Draw solid dark badge with colored double border
+        cv2.rectangle(img, (badge_x1, badge_y1), (badge_x2, badge_y2), (7, 11, 14), -1) # Dark solid fill
+        cv2.rectangle(img, (badge_x1, badge_y1), (badge_x2, badge_y2), color, 2)       # Crisp colored border
+        
+        # Draw text with dark drop shadow for maximum outdoor readability
+        cv2.putText(img, label_text, (badge_x1 + 6, badge_y2 - 6), font, font_scale, (0, 0, 0), font_thick + 2, cv2.LINE_AA)
+        cv2.putText(img, label_text, (badge_x1 + 6, badge_y2 - 6), font, font_scale, color, font_thick, cv2.LINE_AA)
 
     def _process_detections(self, frame, results):
-        """Extracts genuine YOLO detections from the real camera frame."""
+        """Extracts genuine YOLO detections, applies smoothing, prints logs, and annotates frame."""
         annotated_frame = frame.copy()
         current_detections = []
         now = time.time()
@@ -184,31 +225,39 @@ class DetectionService:
                 if cls_name not in ALLOWED_CLASSES or conf < self.confidence_threshold:
                     continue
                 
-                xyxy = box.xyxy[0].tolist()
+                raw_xyxy = box.xyxy[0].tolist()
+                smoothed_xyxy = self._smooth_box(cls_name, raw_xyxy)
                 display_name = ALLOWED_CLASSES[cls_name]
+                
+                x1, y1, x2, y2 = smoothed_xyxy
+                w = x2 - x1
+                h = y2 - y1
                 
                 detection_item = {
                     "class": cls_name,
                     "display_name": display_name,
                     "confidence": round(conf, 2),
+                    "confidence_pct": round(conf * 100, 1),
                     "bounding_box": {
-                        "x1": int(xyxy[0]),
-                        "y1": int(xyxy[1]),
-                        "x2": int(xyxy[2]),
-                        "y2": int(xyxy[3])
+                        "x1": x1,
+                        "y1": y1,
+                        "x2": x2,
+                        "y2": y2,
+                        "w": w,
+                        "h": h
                     }
                 }
                 current_detections.append(detection_item)
                 
-                # Draw tactical box on annotated frame
-                self._draw_tactical_box(annotated_frame, xyxy, cls_name, conf)
+                # Draw high-visibility tactical HUD bounding box
+                self._draw_tactical_box(annotated_frame, smoothed_xyxy, cls_name, conf)
                 
-                # Temporal debouncing for event emission
+                # Terminal Console Logging & Event Emission
                 last_event = self.event_cooldowns.get(cls_name)
                 should_emit = False
                 if not last_event or (now - last_event["time"] > self.cooldown_seconds):
                     should_emit = True
-                elif conf > (last_event["confidence"] + 0.15):
+                elif conf > (last_event["confidence"] + 0.12):
                     should_emit = True
                 
                 if should_emit:
@@ -218,16 +267,27 @@ class DetectionService:
                         "timestamp": datetime.utcnow().isoformat() + "Z",
                         "class": cls_name,
                         "display_name": display_name,
-                        "confidence": round(conf, 2)
+                        "confidence": round(conf, 2),
+                        "confidence_pct": round(conf * 100, 1),
+                        "bounding_box": {"x1": x1, "y1": y1, "w": w, "h": h}
                     }
                     self.event_history.append(event_payload)
                     self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
                     
+                    # Highlighted Terminal Log Output
+                    print(f"\n>>> [AERIS AI DETECTED] 🎯 {cls_name.upper()} | Conf: {conf*100:.1f}% | Box: [x:{x1}, y:{y1}, w:{w}, h:{h}] | Latency: {self.inference_time_ms:.1f}ms")
+                    
                     if self.event_callback:
                         self.event_callback(event_payload)
 
+        # Clear smoothing cache for classes no longer in frame
+        active_classes = {d["class"] for d in current_detections}
+        for cached_cls in list(self.box_smoothing_cache.keys()):
+            if cached_cls not in active_classes:
+                del self.box_smoothing_cache[cached_cls]
+
         # Encode annotated frame to JPEG
-        ret, jpeg = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+        ret, jpeg = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         jpeg_bytes = jpeg.tobytes() if ret else None
 
         detection_payload = {

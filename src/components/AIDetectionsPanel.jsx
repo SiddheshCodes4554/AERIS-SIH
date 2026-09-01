@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { BrainCircuit, AlertTriangle, Users, Flame, Waves, Radio, ShieldCheck } from 'lucide-react';
+import { BrainCircuit, AlertTriangle, Users, Flame, Waves, Radio, ShieldCheck, Target, Crosshair } from 'lucide-react';
 
 export default function AIDetectionsPanel() {
   const [liveDetections, setLiveDetections] = useState([]);
   const [eventHistory, setEventHistory] = useState([]);
-  const [aiStatus, setAiStatus] = useState({ status: 'CONNECTING', inference_fps: 0, model: 'YOLO' });
+  const [aiStatus, setAiStatus] = useState({ status: 'CONNECTING', inference_fps: 0, model: 'YOLOv8' });
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
@@ -63,7 +63,6 @@ export default function AIDetectionsPanel() {
         };
 
         ws.onerror = () => {
-          // Fallback to polling if WebSocket drops
           if (!pollInterval) {
             pollInterval = setInterval(fetchInitialData, 2000);
           }
@@ -112,64 +111,81 @@ export default function AIDetectionsPanel() {
       </div>
 
       {/* Live & Recent Detections List */}
-      <div className="flex-1 space-y-1 overflow-y-auto pr-0.5 min-h-0">
+      <div className="flex-1 space-y-1.5 overflow-y-auto pr-0.5 min-h-0">
         {/* 1. Currently Active Live Detections in Frame */}
         {liveDetections.length > 0 ? (
-          liveDetections.map((det, idx) => (
-            <div
-              key={`live-${idx}`}
-              className="aeris-surface-card px-2 py-1 flex items-center justify-between font-mono text-[10px] border-l-2 border-l-aeris-green bg-aeris-green/5 shadow-[0_0_8px_rgba(99,193,116,0.15)]"
-            >
-              <div className="min-w-0 pr-1.5">
-                <div className="flex items-center space-x-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-aeris-green animate-pulse"></span>
-                  <span className="font-bold text-aeris-green">
-                    {det.display_name}
-                  </span>
-                  <span className="text-[8px] text-aeris-textMuted">(ACTIVE)</span>
+          liveDetections.map((det, idx) => {
+            const pct = det.confidence_pct || Math.round((det.confidence || 0.95) * 100);
+            return (
+              <div
+                key={`live-${idx}`}
+                className="aeris-surface-card px-2.5 py-1.5 flex items-center justify-between font-mono text-[10px] border-l-2 border-l-aeris-green bg-aeris-green/10 shadow-[0_0_10px_rgba(99,193,116,0.2)] animate-pulse"
+              >
+                <div className="min-w-0 pr-1.5">
+                  <div className="flex items-center space-x-1.5">
+                    <Target className="w-3.5 h-3.5 text-aeris-green animate-spin" />
+                    <span className="font-bold text-aeris-green tracking-wide text-[11px]">
+                      {det.display_name}
+                    </span>
+                    <span className="text-[8px] px-1 py-0.2 rounded bg-aeris-green/20 text-aeris-green font-bold">
+                      IN SIGHT
+                    </span>
+                  </div>
+                  <div className="text-[9px] text-aeris-textSecondary mt-0.5 flex items-center space-x-2">
+                    <span>
+                      Confidence: <strong className="text-aeris-green text-[10px] font-extrabold">{pct}%</strong>
+                    </span>
+                    {det.bounding_box && (
+                      <span className="text-[8px] text-aeris-textMuted">
+                        [{det.bounding_box.w}x{det.bounding_box.h} px]
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-[8.5px] text-aeris-textSecondary">
-                  Conf: <strong className="text-aeris-green">{Math.round(det.confidence * 100)}%</strong> • {det.class.toUpperCase()}
+
+                <div className="text-right shrink-0">
+                  <span className="text-[9px] font-mono text-aeris-green font-extrabold px-1.5 py-0.5 rounded bg-black/60 border border-aeris-green/40">
+                    {pct}%
+                  </span>
                 </div>
               </div>
-
-              <span className="text-[8px] font-mono text-aeris-green font-bold px-1 rounded bg-aeris-green/20">
-                LIVE IN FRAME
-              </span>
-            </div>
-          ))
+            );
+          })
         ) : null}
 
         {/* 2. Chronological History of Confirmed Detections */}
         {eventHistory.length > 0 ? (
-          eventHistory.slice(0, 6).map((item) => (
-            <div
-              key={item.event_id}
-              className={`aeris-surface-card px-2 py-1 flex items-center justify-between font-mono text-[10px] border-l-2 ${
-                item.class === 'person' ? 'border-l-aeris-green' : 'border-l-aeris-cyan'
-              }`}
-            >
-              <div className="min-w-0 pr-1.5">
-                <div className="flex items-center space-x-1">
-                  <span className={`font-bold ${item.class === 'person' ? 'text-aeris-textPrimary' : 'text-aeris-cyan'}`}>
-                    {item.display_name}
-                  </span>
+          eventHistory.slice(0, 6).map((item) => {
+            const pct = item.confidence_pct || Math.round((item.confidence || 0.95) * 100);
+            return (
+              <div
+                key={item.event_id}
+                className={`aeris-surface-card px-2 py-1 flex items-center justify-between font-mono text-[10px] border-l-2 ${
+                  item.class === 'person' ? 'border-l-aeris-green bg-aeris-green/5' : 'border-l-aeris-cyan bg-aeris-cyan/5'
+                }`}
+              >
+                <div className="min-w-0 pr-1.5">
+                  <div className="flex items-center space-x-1">
+                    <span className={`font-bold ${item.class === 'person' ? 'text-aeris-green' : 'text-aeris-cyan'}`}>
+                      {item.display_name}
+                    </span>
+                  </div>
+                  <div className="text-[8.5px] text-aeris-textSecondary">
+                    Confidence: <strong className="text-aeris-green font-bold">{pct}%</strong>
+                  </div>
                 </div>
-                <div className="text-[8.5px] text-aeris-textSecondary">
-                  Confidence: <strong className="text-aeris-green">{Math.round(item.confidence * 100)}%</strong>
-                </div>
-              </div>
 
-              <span className="text-[8.5px] text-aeris-textMuted shrink-0">
-                {item.timestamp ? item.timestamp.substring(11, 19) : '10:42:01'}
-              </span>
-            </div>
-          ))
+                <span className="text-[8.5px] text-aeris-textMuted shrink-0">
+                  {item.timestamp ? item.timestamp.substring(11, 19) : '10:42:01'}
+                </span>
+              </div>
+            );
+          })
         ) : liveDetections.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center p-2 text-center font-mono text-[9.5px] text-aeris-textMuted space-y-1">
-            <Radio className="w-4 h-4 text-aeris-cyan animate-pulse" />
-            <span className="text-aeris-textSecondary font-bold">● SCANNING FOR OBJECTS...</span>
-            <span className="text-[8px] text-[#8C9492]">YOLO inference running on live camera feed</span>
+            <Crosshair className="w-4 h-4 text-aeris-cyan animate-pulse" />
+            <span className="text-aeris-textSecondary font-bold">● SCANNING FOR TARGETS...</span>
+            <span className="text-[8px] text-[#8C9492]">Real-time YOLOv8 inference active on camera</span>
           </div>
         ) : null}
       </div>
