@@ -11,12 +11,14 @@ import {
   Radio,
   Sliders,
   MapPin,
-  Route
+  Route,
+  RotateCcw
 } from 'lucide-react';
 
 export default function Navigation({ activeTab, onSelectTab }) {
   const navItems = [
     { id: 'planning', label: 'Mission Planning', icon: Route, badge: 'PLAN' },
+    { id: 'offline-autonomy', label: 'Offline Autonomy', icon: RotateCcw, badge: 'RECOVERY' },
     { id: 'aeris01-operations', label: 'AERIS-01 Operations', icon: Sliders, badge: 'HEALTH' },
     { id: 'live-mission', label: 'Live Mission Command', icon: Compass },
     { id: 'incidents', label: 'Incidents / Alerts', icon: ShieldAlert, badge: '3' },
@@ -71,13 +73,15 @@ export default function Navigation({ activeTab, onSelectTab }) {
                 <span>{item.label}</span>
                 {item.badge && (
                   <span className={`text-[8px] px-1.5 py-0.2 rounded-full font-bold ${
-                    item.badge === 'PLAN'
-                      ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
-                      : item.badge === 'HEALTH'
-                        ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
-                        : item.badge === 'AI' 
-                          ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
-                          : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
+                    item.badge === 'RECOVERY'
+                      ? 'bg-[#F5A623]/20 text-[#F5A623] border border-[#F5A623]/40'
+                      : item.badge === 'PLAN'
+                        ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
+                        : item.badge === 'HEALTH'
+                          ? 'bg-[#63C174]/20 text-[#63C174] border border-[#63C174]/30'
+                          : item.badge === 'AI' 
+                            ? 'bg-[#3B9EFF]/20 text-[#3B9EFF] border border-[#3B9EFF]/30'
+                            : 'bg-[#FF4D3D]/20 text-[#FF4D3D] border border-[#FF4D3D]/30'
                   }`}>
                     {item.badge}
                   </span>
