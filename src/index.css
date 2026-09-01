@@ -12,50 +12,93 @@
   body {
     margin: 0;
     padding: 0;
-    font-family: 'Inter', sans-serif;
-    background-color: #080C14;
-    color: #F1F5F9;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #080A0C;
+    color: #F1F3F2;
     height: 100vh;
     width: 100vw;
     overflow: hidden;
+    letter-spacing: -0.01em;
   }
 }
 
-/* Custom scrollbars for data panels */
+/* Glassmorphic Panel Styling */
+.aeris-glass-panel {
+  background: rgba(18, 22, 24, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.aeris-glass-card {
+  background: rgba(22, 26, 28, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.aeris-glass-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Alert Tinted Card */
+.aeris-alert-card {
+  background: linear-gradient(135deg, rgba(38, 20, 20, 0.85) 0%, rgba(22, 26, 28, 0.9) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 59, 48, 0.2);
+}
+
+/* Custom Minimal Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0D1626;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1E2F4D;
-  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2A4066;
+  background: rgba(255, 255, 255, 0.2);
 }
 
-/* Dark mode styling for Leaflet tiles */
+/* Map Styling & Dark Satellite Inversion / Contrast */
 .leaflet-container {
-  background-color: #080C14 !important;
+  background-color: #080A0C !important;
   font-family: 'Inter', sans-serif !important;
 }
 
-.dark-map-tiles {
-  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+.satellite-map-tiles {
+  filter: brightness(0.68) contrast(1.15) saturate(0.85);
 }
 
-/* Telemetry number pulse animation */
-@keyframes subtle-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+.dark-terrain-tiles {
+  filter: brightness(0.7) contrast(1.2) hue-rotate(190deg) saturate(0.4);
 }
 
-.animate-subtle-pulse {
-  animation: subtle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+/* Pulse animation */
+@keyframes soft-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.75; }
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes ping-subtle {
+  0% { transform: scale(1); opacity: 0.8; }
+  80%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+.animate-ping-subtle {
+  animation: ping-subtle 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
 }

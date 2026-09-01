@@ -1,85 +1,121 @@
 import React, { useState } from 'react';
-import Header from './components/Header.jsx';
-import MissionStatus from './components/MissionStatus.jsx';
+import TopNavbar from './components/TopNavbar.jsx';
+import LeftOperationsPanel from './components/LeftOperationsPanel.jsx';
+import RightAlertsPanel from './components/RightAlertsPanel.jsx';
+import SelectedDroneCard from './components/SelectedDroneCard.jsx';
+import BottomAnalytics from './components/BottomAnalytics.jsx';
+import MapControls from './components/MapControls.jsx';
 import MissionMap from './components/MissionMap.jsx';
-import DetectionPanel from './components/DetectionPanel.jsx';
-import CameraPanel from './components/CameraPanel.jsx';
-import CommunicationStatus from './components/CommunicationStatus.jsx';
 
 import {
-  INITIAL_MISSION_DATA,
-  INITIAL_DRONE_TELEMETRY,
-  MOCK_CHECKPOINTS,
-  MOCK_FLIGHT_PATH,
-  MOCK_SURVIVORS,
-  MOCK_HAZARDS,
-  GEOFENCE_POLYGON,
-  INITIAL_DETECTIONS,
-  INITIAL_COMM_STATUS
+  FLEET_SUMMARY,
+  EFFICIENCY_TIMELINE,
+  DRONE_FLEET,
+  ACTIVE_ALERTS,
+  AI_INTELLIGENCE,
+  INCIDENT_ZONES,
+  MISSION_CHECKPOINTS
 } from './data/mockData.js';
 
 export default function App() {
-  const [missionData, setMissionData] = useState(INITIAL_MISSION_DATA);
-  const [droneTelemetry, setDroneTelemetry] = useState(INITIAL_DRONE_TELEMETRY);
-  const [checkpoints, setCheckpoints] = useState(MOCK_CHECKPOINTS);
-  const [flightPath, setFlightPath] = useState(MOCK_FLIGHT_PATH);
-  const [survivors, setSurvivors] = useState(MOCK_SURVIVORS);
-  const [hazards, setHazards] = useState(MOCK_HAZARDS);
-  const [geofence, setGeofence] = useState(GEOFENCE_POLYGON);
-  const [detections, setDetections] = useState(INITIAL_DETECTIONS);
-  const [commStatus, setCommStatus] = useState(INITIAL_COMM_STATUS);
+  const [activeNavTab, setActiveNavTab] = useState("Live Operations");
+  const [selectedDroneId, setSelectedDroneId] = useState("AERIS-01");
+  const [mapLayer, setMapLayer] = useState("satellite"); // satellite | terrain
+  const [showIncidentZones, setShowIncidentZones] = useState(true);
+  const [showRoutes, setShowRoutes] = useState(true);
+  const [mapCenter, setMapCenter] = useState([30.5520, 79.5580]);
+
+  // Find currently selected drone object
+  const selectedDrone = DRONE_FLEET.find(d => d.id === selectedDroneId) || DRONE_FLEET[0];
+
+  // Handle Drone selection
+  const handleSelectDrone = (droneId) => {
+    setSelectedDroneId(droneId);
+    const target = DRONE_FLEET.find(d => d.id === droneId);
+    if (target && target.position) {
+      setMapCenter([target.position.lat, target.position.lng]);
+    }
+  };
+
+  // Recenter on disaster operations zone
+  const handleRecenter = () => {
+    if (selectedDrone && selectedDrone.position) {
+      setMapCenter([selectedDrone.position.lat, selectedDrone.position.lng]);
+    } else {
+      setMapCenter([30.5520, 79.5580]);
+    }
+  };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-aeris-bg text-slate-100 overflow-hidden select-none">
-      {/* 1. TOP HEADER */}
-      <Header 
-        missionData={missionData} 
-        droneTelemetry={droneTelemetry} 
-        commStatus={commStatus} 
+    <div className="w-screen h-screen relative overflow-hidden bg-aeris-bg text-aeris-textPrimary flex flex-col font-sans select-none">
+      {/* 1. LAYER 0: FULL-SCREEN INTERACTIVE SATELLITE / TERRAIN MAP CANVAS */}
+      <MissionMap 
+        drones={DRONE_FLEET}
+        selectedDroneId={selectedDroneId}
+        onSelectDrone={handleSelectDrone}
+        incidentZones={INCIDENT_ZONES}
+        checkpoints={MISSION_CHECKPOINTS}
+        mapLayer={mapLayer}
+        showIncidentZones={showIncidentZones}
+        showRoutes={showRoutes}
+        centerPosition={mapCenter}
       />
 
-      {/* 2. COMMAND CENTER MAIN GRID (Full Viewport without page scroll) */}
-      <main className="flex-1 grid grid-cols-12 grid-rows-12 gap-2.5 p-2.5 min-h-0 overflow-hidden">
-        {/* UPPER LEFT: MISSION STATUS (Cols 1-4, Rows 1-7) */}
-        <section className="col-span-12 lg:col-span-4 row-span-12 lg:row-span-7 min-h-0">
-          <MissionStatus 
-            missionData={missionData} 
-            droneTelemetry={droneTelemetry} 
-          />
-        </section>
-
-        {/* UPPER RIGHT / CENTER: LIVE MISSION MAP (VISUALLY DOMINANT) (Cols 5-12, Rows 1-7) */}
-        <section className="col-span-12 lg:col-span-8 row-span-12 lg:row-span-7 min-h-0 shadow-lg">
-          <MissionMap 
-            droneTelemetry={droneTelemetry}
-            checkpoints={checkpoints}
-            flightPath={flightPath}
-            survivors={survivors}
-            hazards={hazards}
-            geofence={geofence}
-          />
-        </section>
-
-        {/* LOWER LEFT: DETECTIONS (Cols 1-4, Rows 8-12) */}
-        <section className="col-span-12 lg:col-span-4 row-span-12 lg:row-span-5 min-h-0">
-          <DetectionPanel 
-            detections={detections}
-          />
-        </section>
-
-        {/* LOWER RIGHT / CENTER: CAMERA / AI FEED (Cols 5-12, Rows 8-12) */}
-        <section className="col-span-12 lg:col-span-8 row-span-12 lg:row-span-5 min-h-0 shadow-lg">
-          <CameraPanel 
-            droneTelemetry={droneTelemetry} 
-          />
-        </section>
-      </main>
-
-      {/* 3. UNIFIED BOTTOM STATUS BAR */}
-      <CommunicationStatus 
-        commStatus={commStatus} 
-        missionData={missionData}
+      {/* 2. LAYER 1: TOP NAVIGATION BAR */}
+      <TopNavbar 
+        activeTab={activeNavTab} 
+        onTabChange={setActiveNavTab} 
       />
+
+      {/* 3. LAYER 2: FLOATING DASHBOARD INTERFACE PANELS */}
+      <div className="relative flex-1 p-4 pointer-events-none flex justify-between z-10 overflow-hidden">
+        {/* LEFT FLOATING OPERATIONS PANEL */}
+        <div className="pointer-events-auto h-full flex flex-col">
+          <LeftOperationsPanel 
+            fleetSummary={FLEET_SUMMARY}
+            efficiencyData={EFFICIENCY_TIMELINE}
+            drones={DRONE_FLEET}
+            selectedDroneId={selectedDroneId}
+            onSelectDrone={handleSelectDrone}
+          />
+        </div>
+
+        {/* CENTER FLOATING AREA (Top Controls + Bottom Selected Drone Card) */}
+        <div className="flex-1 flex flex-col justify-between items-center px-4 h-full">
+          {/* Top Map Action Bar */}
+          <div className="pointer-events-auto">
+            <MapControls 
+              mapLayer={mapLayer}
+              onToggleLayer={setMapLayer}
+              showIncidentZones={showIncidentZones}
+              onToggleIncidents={() => setShowIncidentZones(!showIncidentZones)}
+              showRoutes={showRoutes}
+              onToggleRoutes={() => setShowRoutes(!showRoutes)}
+              onRecenter={handleRecenter}
+            />
+          </div>
+
+          {/* Bottom Selected Drone Detail Card */}
+          <div className="pointer-events-auto w-full max-w-[760px] pb-1">
+            <SelectedDroneCard drone={selectedDrone} />
+          </div>
+        </div>
+
+        {/* RIGHT FLOATING ALERTS & ANALYTICS COLUMN */}
+        <div className="pointer-events-auto h-full flex flex-col justify-between space-y-3">
+          <div className="flex-1 min-h-0">
+            <RightAlertsPanel 
+              alerts={ACTIVE_ALERTS}
+              aiIntelligence={AI_INTELLIGENCE}
+            />
+          </div>
+          
+          {/* Bottom Right Analytics Summary Strip */}
+          <div className="shrink-0">
+            <BottomAnalytics fleetSummary={FLEET_SUMMARY} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
