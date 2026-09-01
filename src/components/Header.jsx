@@ -10,7 +10,11 @@ import {
   Layers,
   AlertTriangle,
   Play,
-  Pause
+  Pause,
+  Columns,
+  Maximize2,
+  Video,
+  Map as MapIcon
 } from 'lucide-react';
 
 export default function Header({ 
@@ -18,7 +22,9 @@ export default function Header({
   simulationMode, 
   onSetSimulationMode,
   isPlayingAutoDemo,
-  onToggleAutoDemo
+  onToggleAutoDemo,
+  layoutMode = 'DUAL_SPLIT',
+  onSetLayoutMode = () => {}
 }) {
   const [time, setTime] = useState(new Date());
 
@@ -50,7 +56,7 @@ export default function Header({
         };
       case 'DETECTION':
         return {
-          text: 'SURVIVOR CONFIRMED (96%) ●',
+          text: 'TARGET ACQUIRED ●',
           bg: 'bg-[#F5A623]/20 text-[#F5A623] border-[#F5A623]/40 shadow-[0_0_10px_rgba(245,166,35,0.3)]'
         };
       case 'NORMAL':
@@ -65,9 +71,9 @@ export default function Header({
   const statusBadge = getStatusBadge();
 
   return (
-    <header className="h-14 px-4 bg-[#0B0E0F] border-b border-aeris-border flex items-center justify-between select-none shrink-0 z-20 font-sans">
+    <header className="h-14 px-3.5 bg-[#0B0E0F] border-b border-aeris-border flex items-center justify-between select-none shrink-0 z-20 font-sans">
       {/* 1. Left: Brand & Aerospace Logo */}
-      <div className="flex items-center space-x-3 min-w-[280px]">
+      <div className="flex items-center space-x-2.5 min-w-[240px]">
         <div className="w-8 h-8 rounded-lg bg-aeris-surface border border-white/10 flex items-center justify-center shadow-inner">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path d="M12 2L3 7V13C3 18.5 6.8 23.2 12 24.5C17.2 23.2 21 18.5 21 13V7L12 2Z" stroke="#3B8EDB" strokeWidth="1.5" strokeLinejoin="round" fill="rgba(59, 142, 219, 0.1)"/>
@@ -76,81 +82,105 @@ export default function Header({
         </div>
 
         <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-sm font-semibold tracking-[0.14em] text-aeris-textPrimary">
+          <div className="flex items-center space-x-1.5">
+            <h1 className="text-sm font-semibold tracking-[0.12em] text-aeris-textPrimary">
               AERIS COMMAND CENTER
             </h1>
             <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-aeris-blue/15 text-aeris-blue border border-aeris-blue/30 font-medium">
-              UAV-01
+              AERIS-01
             </span>
           </div>
-          <p className="text-[8.5px] tracking-[0.08em] uppercase text-aeris-textSecondary font-medium leading-none mt-0.5">
-            Autonomous Disaster Response Operations
+          <p className="text-[8px] tracking-[0.08em] uppercase text-aeris-textSecondary font-medium leading-none mt-0.5">
+            Autonomous Disaster Search & Rescue
           </p>
         </div>
       </div>
 
-      {/* 2. Center: Mission Information */}
-      <div className="hidden lg:flex items-center space-x-3 px-3.5 py-1 rounded-card bg-aeris-surface border border-aeris-border text-xs font-mono">
-        <div>
-          <span className="text-[8.5px] text-aeris-textMuted uppercase block leading-none">MISSION</span>
-          <span className="text-aeris-textPrimary font-semibold">{missionState.missionName}</span>
-        </div>
-        <div className="h-4 w-[1px] bg-aeris-border"></div>
-        <div>
-          <span className="text-[8.5px] text-aeris-textMuted uppercase block leading-none">TARGET CHECKPOINT</span>
-          <span className="text-aeris-cyan font-bold">{missionState.checkpoint}</span>
-        </div>
+      {/* 2. Center-Left: Dual Screen Layout Switcher */}
+      <div className="flex items-center space-x-1 bg-aeris-surface p-0.5 rounded-card border border-aeris-border text-[9px] font-mono">
+        {[
+          { id: 'DUAL_SPLIT', label: '50/50 DUAL VIEW', icon: Columns },
+          { id: 'CAM_FOCUS', label: 'CAM FOCUS', icon: Video },
+          { id: 'MAP_FOCUS', label: 'MAP FOCUS', icon: MapIcon },
+          { id: '3_PANE', label: '3-PANE', icon: Layers }
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = layoutMode === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onSetLayoutMode(item.id)}
+              className={`flex items-center space-x-1 px-2 py-1 rounded transition-all font-semibold ${
+                isActive
+                  ? 'bg-aeris-cyan/20 text-aeris-cyan border border-aeris-cyan/40 shadow-sm'
+                  : 'text-aeris-textSecondary hover:text-white border border-transparent'
+              }`}
+              title={`Switch dashboard layout to ${item.label}`}
+            >
+              <Icon className="w-2.5 h-2.5" />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* 3. Right: Demo Simulation State Switcher & System Status */}
+      {/* 3. Center-Right: Automated Recovery Demo Engine */}
       <div className="flex items-center space-x-2">
-        {/* Automated Backtracking Recovery Demo Button */}
         <button
           onClick={onToggleAutoDemo}
-          className={`px-3 py-1 rounded-pill font-mono text-[10px] font-bold flex items-center space-x-1.5 transition-all shadow-md ${
+          className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-card border text-[10px] font-mono font-bold transition-all ${
             isPlayingAutoDemo
-              ? 'bg-[#F5A623] text-black animate-pulse shadow-[0_0_12px_rgba(245,166,35,0.5)]'
-              : 'bg-[#1C2125] hover:bg-[#181D1E] text-[#F5A623] border border-[#F5A623]/40'
+              ? 'bg-aeris-amber/20 border-aeris-amber text-aeris-amber shadow-[0_0_12px_rgba(245,166,35,0.4)] animate-pulse'
+              : 'bg-aeris-surface border-white/10 text-aeris-textSecondary hover:text-aeris-textPrimary'
           }`}
-          title="Click to play fully automated signal loss and backtracking recovery sequence"
         >
-          {isPlayingAutoDemo ? <Pause className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
-          <span>{isPlayingAutoDemo ? 'RECOVERY DEMO ACTIVE...' : '▶ AUTO BACKTRACK DEMO'}</span>
+          {isPlayingAutoDemo ? (
+            <>
+              <Pause className="w-3 h-3 text-aeris-amber" />
+              <span>DEMO PLAYING...</span>
+            </>
+          ) : (
+            <>
+              <Play className="w-3 h-3 text-aeris-cyan fill-aeris-cyan" />
+              <span>FAILOVER DEMO</span>
+            </>
+          )}
         </button>
 
-        {/* Interactive Scenario States */}
-        <div className="hidden md:flex items-center space-x-1 bg-aeris-surface p-0.5 rounded-pill border border-aeris-border text-[9.5px] font-mono">
+        {/* Manual Simulation State Trigger Buttons */}
+        <div className="flex items-center space-x-0.5 bg-aeris-surface p-0.5 rounded-card border border-aeris-border text-[9px] font-mono">
           {[
             { id: 'NORMAL', label: 'NORMAL' },
-            { id: 'DETECTION', label: 'AI DETECT' },
             { id: 'SIGNAL_LOSS', label: 'SIGNAL LOSS' },
             { id: 'BACKTRACKING', label: 'BACKTRACK' },
-            { id: 'RECONNECTED', label: 'RECONNECT' },
-          ].map((st) => (
+            { id: 'RECONNECTED', label: 'RECONNECT' }
+          ].map((mode) => (
             <button
-              key={st.id}
-              onClick={() => onSetSimulationMode(st.id)}
-              className={`px-2 py-0.5 rounded-pill transition-all font-semibold ${
-                simulationMode === st.id
-                  ? 'bg-aeris-surfaceHover text-aeris-cyan border border-aeris-cyan/40 shadow-sm'
-                  : 'text-aeris-textSecondary hover:text-aeris-textPrimary'
+              key={mode.id}
+              onClick={() => onSetSimulationMode(mode.id)}
+              className={`px-1.5 py-0.5 rounded transition-colors ${
+                simulationMode === mode.id
+                  ? 'bg-aeris-surfaceHover text-aeris-textPrimary font-bold border border-white/10'
+                  : 'text-aeris-textMuted hover:text-aeris-textSecondary'
               }`}
             >
-              {st.label}
+              {mode.label}
             </button>
           ))}
         </div>
+      </div>
 
-        {/* Live System State Badge */}
-        <div className={`px-2.5 py-1 rounded-pill text-[10.5px] font-mono font-bold border transition-all ${statusBadge.bg}`}>
+      {/* 4. Right: Telemetry Health & UTC Clock */}
+      <div className="flex items-center space-x-3">
+        {/* System Health Badge */}
+        <div className={`px-2.5 py-1 rounded-card border text-[9.5px] font-mono font-bold tracking-wider ${statusBadge.bg}`}>
           {statusBadge.text}
         </div>
 
-        {/* Real-time Clock */}
-        <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 bg-aeris-surface border border-aeris-border rounded-pill text-[10.5px] font-mono text-aeris-textPrimary">
-          <Clock className="w-3 h-3 text-aeris-textSecondary" />
-          <span>{formatTime(time)}</span>
+        {/* Live UTC Clock */}
+        <div className="flex items-center space-x-1.5 text-aeris-textPrimary font-mono text-xs bg-aeris-surface px-2.5 py-1 rounded-card border border-aeris-border">
+          <Clock className="w-3.5 h-3.5 text-aeris-textSecondary" />
+          <span className="font-semibold">{formatTime(time)}</span>
         </div>
       </div>
     </header>

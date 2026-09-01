@@ -1,61 +1,61 @@
 import React, { useState, useEffect } from 'react';
-import Navigation from './components/Navigation.jsx';
-import AERIS01OperationsView from './components/operations/AERIS01OperationsView.jsx';
-import IncidentResponseView from './components/incidents/IncidentResponseView.jsx';
-import MissionIntelligenceView from './components/analytics/MissionIntelligenceView.jsx';
+import Navigation from './components/Navigation';
+import Header from './components/Header';
+import MissionTelemetry from './components/MissionTelemetry';
+import LiveDisasterMap from './components/LiveDisasterMap';
+import LiveAICameraFeed from './components/LiveAICameraFeed';
+import LiveEventLog from './components/LiveEventLog';
+import AIDetectionsPanel from './components/AIDetectionsPanel';
+import RiskHeatmapStatus from './components/RiskHeatmapStatus';
+import MissionControlPanel from './components/MissionControlPanel';
+import BottomStatusBar from './components/BottomStatusBar';
 
-// Live Operations Components
-import Header from './components/Header.jsx';
-import MissionTelemetry from './components/MissionTelemetry.jsx';
-import LiveDisasterMap from './components/LiveDisasterMap.jsx';
-import LiveAICameraFeed from './components/LiveAICameraFeed.jsx';
-import LiveEventLog from './components/LiveEventLog.jsx';
-import AIDetectionsPanel from './components/AIDetectionsPanel.jsx';
-import RiskHeatmapStatus from './components/RiskHeatmapStatus.jsx';
-import MissionControlPanel from './components/MissionControlPanel.jsx';
-import BottomStatusBar from './components/BottomStatusBar.jsx';
+// Full Screen Operations Sub-views
+import AERIS01OperationsView from './components/operations/AERIS01OperationsView';
+import IncidentResponseView from './components/operations/IncidentResponseView';
+import MissionIntelligenceView from './components/operations/MissionIntelligenceView';
 
-import { DISASTER_ZONES } from './data/operationalAreas.js';
-import {
-  INITIAL_MISSION_STATE,
-  CHECKPOINTS_ROUTE,
-  FLIGHT_PATHS,
-  SURVIVORS_LIST,
-  HAZARDS_LIST,
+import { 
+  DEFAULT_MISSION_STATE, 
+  DISASTER_ZONES,
+  CHECKPOINTS_ROUTE, 
+  FLIGHT_PATHS, 
+  SURVIVORS_LIST, 
+  HAZARDS_LIST, 
   RISK_HEATMAP_DATA,
-  CHRONOLOGICAL_EVENTS
-} from './data/mockData.js';
+  INITIAL_EVENT_LOG 
+} from './data/mockData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('live-mission'); // 'live-mission' | 'aeris01-operations' | 'incidents' | 'intelligence'
   const [selectedZoneId, setSelectedZoneId] = useState('chamoli-flood');
-  const [simulationMode, setSimulationMode] = useState('NORMAL');
+  const [missionState, setMissionState] = useState(DEFAULT_MISSION_STATE);
+  const [simulationMode, setSimulationMode] = useState('NORMAL'); // 'NORMAL' | 'SIGNAL_LOSS' | 'BACKTRACKING' | 'RECONNECTED' | 'DETECTION'
   const [isPlayingAutoDemo, setIsPlayingAutoDemo] = useState(false);
-  const [missionState, setMissionState] = useState(INITIAL_MISSION_STATE);
-  const [eventLog, setEventLog] = useState(CHRONOLOGICAL_EVENTS);
+  const [eventLog, setEventLog] = useState(INITIAL_EVENT_LOG);
+  const [layoutMode, setLayoutMode] = useState('DUAL_SPLIT'); // 'DUAL_SPLIT' (50/50) | '3_PANE' | 'CAM_FOCUS' | 'MAP_FOCUS'
 
-  // Active Selected Operational Disaster Zone
   const activeZone = DISASTER_ZONES.find(z => z.id === selectedZoneId) || DISASTER_ZONES[0];
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
 
-  // 1. Initial Telemetry Fetch & Real-Time WebSocket Listener
+  // 1. Initial State & Real-Time WebSocket Synchronization
   useEffect(() => {
     let ws = null;
     let pollTimer = null;
 
     const fetchInitialTelemetry = async () => {
       try {
-        const res = await fetch(`${backendUrl}/api/telemetry/current`);
+        const res = await fetch(`${backendUrl}/api/telemetry/current`, { mode: 'cors' });
         if (res.ok) {
-          const telem = await res.json();
+          const data = await res.json();
           setMissionState(prev => ({
             ...prev,
-            ...telem
+            ...data
           }));
         }
       } catch (err) {
-        console.debug("Initial telemetry standby:", err);
+        console.debug("Backend telemetry standby:", err);
       }
     };
 
@@ -64,7 +64,7 @@ export default function App() {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          console.log("Telemetry WebSocket connected to AERIS Backend");
+          console.log("WebSocket connected to AERIS Telemetry Stream");
         };
 
         ws.onmessage = (event) => {
@@ -82,7 +82,7 @@ export default function App() {
             } else if (msg.type === 'detection') {
               const det = msg.data;
               const now = new Date().toISOString().substring(11, 19);
-              const confPct = Math.round((det.confidence || 0.95) * 100);
+              const confPct = det.confidence_pct || Math.round((det.confidence || 0.95) * 100);
               setEventLog(prev => [
                 {
                   time: now,
@@ -138,10 +138,12 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [isPlayingAutoDemo, simulationMode]);
 
-  // 3. Zone Selection
+  // 3. Dynamic Disaster Zone Switcher
   const handleSelectZone = async (zoneId) => {
     setSelectedZoneId(zoneId);
-    const zone = DISASTER_ZONES.find(z => z.id === zoneId) || DISASTER_ZONES[0];
+    const zone = DISASTER_ZONES.find(z => z.id === zoneId);
+    if (!zone) return;
+
     const now = new Date().toISOString().substring(11, 19);
 
     try {
@@ -224,7 +226,7 @@ export default function App() {
       ]);
     } else if (mode === 'DETECTION') {
       setEventLog(prev => [
-        { time: now, text: `YOLO AI Detection: Person Confirmed (96% Conf, ${activeZone.shortName})`, color: "green" },
+        { time: now, text: `YOLO AI Detection: Target Confirmed (${activeZone.shortName})`, color: "green" },
         ...prev
       ]);
     } else {
@@ -297,48 +299,103 @@ export default function App() {
                 setIsPlayingAutoDemo(true);
               }
             }}
+            layoutMode={layoutMode}
+            onSetLayoutMode={setLayoutMode}
           />
 
           <main className="flex-1 p-2 flex flex-col gap-2 min-h-0 overflow-hidden">
-            {/* Upper Operations Row */}
+            {/* Upper Operations Row: Dual Primary Command View */}
             <section className="flex-[7] min-h-0 grid grid-cols-12 gap-2">
-              <div className="col-span-3 h-full min-h-0">
-                <MissionTelemetry 
-                  missionState={missionState}
-                  isOffline={isOffline}
-                  isBacktracking={isBacktracking}
-                />
-              </div>
-
-              <div className="col-span-6 h-full min-h-0 shadow-2xl">
-                <LiveDisasterMap 
-                  missionState={missionState}
-                  checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
-                  flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
-                  survivors={SURVIVORS_LIST}
-                  hazards={HAZARDS_LIST}
-                  heatmapData={RISK_HEATMAP_DATA}
-                  isOffline={isOffline}
-                  isBacktracking={isBacktracking}
-                />
-              </div>
-
-              <div className="col-span-3 h-full min-h-0">
-                <LiveAICameraFeed 
-                  missionState={missionState}
-                />
-              </div>
+              {layoutMode === '3_PANE' ? (
+                <>
+                  <div className="col-span-3 h-full min-h-0">
+                    <MissionTelemetry 
+                      missionState={missionState}
+                      isOffline={isOffline}
+                      isBacktracking={isBacktracking}
+                    />
+                  </div>
+                  <div className="col-span-5 h-full min-h-0 shadow-2xl">
+                    <LiveDisasterMap 
+                      missionState={missionState}
+                      checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
+                      flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
+                      survivors={SURVIVORS_LIST}
+                      hazards={HAZARDS_LIST}
+                      heatmapData={RISK_HEATMAP_DATA}
+                      isOffline={isOffline}
+                      isBacktracking={isBacktracking}
+                    />
+                  </div>
+                  <div className="col-span-4 h-full min-h-0">
+                    <LiveAICameraFeed missionState={missionState} />
+                  </div>
+                </>
+              ) : layoutMode === 'CAM_FOCUS' ? (
+                <>
+                  <div className="col-span-4 h-full min-h-0 shadow-2xl">
+                    <LiveDisasterMap 
+                      missionState={missionState}
+                      checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
+                      flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
+                      survivors={SURVIVORS_LIST}
+                      hazards={HAZARDS_LIST}
+                      heatmapData={RISK_HEATMAP_DATA}
+                      isOffline={isOffline}
+                      isBacktracking={isBacktracking}
+                    />
+                  </div>
+                  <div className="col-span-8 h-full min-h-0">
+                    <LiveAICameraFeed missionState={missionState} />
+                  </div>
+                </>
+              ) : layoutMode === 'MAP_FOCUS' ? (
+                <>
+                  <div className="col-span-8 h-full min-h-0 shadow-2xl">
+                    <LiveDisasterMap 
+                      missionState={missionState}
+                      checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
+                      flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
+                      survivors={SURVIVORS_LIST}
+                      hazards={HAZARDS_LIST}
+                      heatmapData={RISK_HEATMAP_DATA}
+                      isOffline={isOffline}
+                      isBacktracking={isBacktracking}
+                    />
+                  </div>
+                  <div className="col-span-4 h-full min-h-0">
+                    <LiveAICameraFeed missionState={missionState} />
+                  </div>
+                </>
+              ) : (
+                /* DUAL_SPLIT (50/50 Balanced Power View - Default) */
+                <>
+                  <div className="col-span-6 h-full min-h-0 shadow-2xl">
+                    <LiveDisasterMap 
+                      missionState={missionState}
+                      checkpoints={activeZone.checkpoints || CHECKPOINTS_ROUTE}
+                      flightPaths={activeZone.flightPaths || FLIGHT_PATHS}
+                      survivors={SURVIVORS_LIST}
+                      hazards={HAZARDS_LIST}
+                      heatmapData={RISK_HEATMAP_DATA}
+                      isOffline={isOffline}
+                      isBacktracking={isBacktracking}
+                    />
+                  </div>
+                  <div className="col-span-6 h-full min-h-0 shadow-2xl">
+                    <LiveAICameraFeed missionState={missionState} />
+                  </div>
+                </>
+              )}
             </section>
 
             {/* Lower Diagnostics & Events Row */}
             <section className="flex-[3] min-h-0 grid grid-cols-12 gap-2">
-              <div className="col-span-4 h-full min-h-0">
-                <LiveEventLog 
-                  events={eventLog}
-                />
+              <div className="col-span-3 h-full min-h-0">
+                <LiveEventLog events={eventLog} />
               </div>
 
-              <div className="col-span-3 h-full min-h-0">
+              <div className="col-span-4 h-full min-h-0">
                 <AIDetectionsPanel />
               </div>
 
@@ -347,9 +404,7 @@ export default function App() {
               </div>
 
               <div className="col-span-2 h-full min-h-0">
-                <MissionControlPanel 
-                  onActionTrigger={handleActionTrigger}
-                />
+                <MissionControlPanel onActionTrigger={handleActionTrigger} />
               </div>
             </section>
           </main>
