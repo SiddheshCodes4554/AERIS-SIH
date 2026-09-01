@@ -27,8 +27,7 @@ class CameraService:
         if self._initialized:
             return
         
-        # camera_index: 0, 1 for physical webcams; -1 for Rescue Drone Simulator
-        self.camera_index = int(os.getenv("CAMERA_INDEX", "0"))
+        self.camera_index = int(os.getenv("CAMERA_INDEX", "-1")) # Default to Simulator if not specified
         self.cap = None
         self.is_running = False
         self.is_camera_available = False
@@ -36,6 +35,7 @@ class CameraService:
         self.latest_frame = None
         self.latest_jpeg = None
         self.latest_sim_targets = []
+        self.failed_hardware_indices = set()
         self.frame_lock = threading.Lock()
         self.thread = None
         self.sim_tick = 0
@@ -236,12 +236,17 @@ class CameraService:
             if self.cap is None or not self.cap.isOpened():
                 self.is_camera_available = False
                 now = time.time()
-                if now - last_retry > retry_delay:
+                # Only attempt probe if index hasn't failed previously or after extended retry delay (60s)
+                should_probe = (self.camera_index not in self.failed_hardware_indices) or (now - last_retry > 60.0)
+                if should_probe and (now - last_retry > retry_delay):
                     last_retry = now
                     self.cap = self._safe_open_camera(self.camera_index)
                     if self.cap:
                         self.is_camera_available = True
                         self.is_simulation = False
+                        self.failed_hardware_indices.discard(self.camera_index)
+                    else:
+                        self.failed_hardware_indices.add(self.camera_index)
                 
                 # If physical webcam cannot be opened, fall back to Tactical Simulation stream so UI is never black
                 if not self.is_camera_available:
@@ -324,6 +329,7 @@ class CameraService:
     def select_camera(self, new_index: int):
         """Switches active camera index (-1 for Simulator, 0/1 for Hardware webcams)."""
         logger.info(f"Switching active camera index to {new_index}...")
+        self.failed_hardware_indices.discard(new_index) # Reset failed status on explicit selection
         with self.frame_lock:
             if self.cap and self.cap.isOpened():
                 self.cap.release()
