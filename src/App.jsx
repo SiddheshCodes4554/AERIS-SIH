@@ -12,8 +12,8 @@ import BottomStatusBar from './components/BottomStatusBar';
 
 // Full Screen Operations Sub-views
 import AERIS01OperationsView from './components/operations/AERIS01OperationsView';
-import IncidentResponseView from './components/operations/IncidentResponseView';
-import MissionIntelligenceView from './components/operations/MissionIntelligenceView';
+import IncidentResponseView from './components/incidents/IncidentResponseView';
+import MissionIntelligenceView from './components/analytics/MissionIntelligenceView';
 
 import { 
   DEFAULT_MISSION_STATE, 
