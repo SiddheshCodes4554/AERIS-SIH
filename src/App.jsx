@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import Header from './components/Header';
 import MissionTelemetry from './components/MissionTelemetry';
@@ -15,7 +15,6 @@ import AERIS01OperationsView from './components/operations/AERIS01OperationsView
 import IncidentResponseView from './components/incidents/IncidentResponseView';
 import MissionIntelligenceView from './components/analytics/MissionIntelligenceView';
 
-import { useGeolocation } from './hooks/useGeolocation';
 import { DISASTER_ZONES } from './data/operationalAreas';
 import { 
   DEFAULT_MISSION_STATE, 
@@ -43,29 +42,35 @@ export default function App() {
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
 
-  // 1. Hook into Real Device Location Services
-  const {
-    location: deviceLocation,
-    status: locationStatus,
-    error: locationError,
-    source: locationSource,
-    retryTracking
-  } = useGeolocation(backendUrl);
+  // 1. Centralized Authoritative Drone Position (Derived strictly from Telemetry)
+  const dronePosition = {
+    latitude: missionState.lat !== undefined ? missionState.lat : (missionState.latitude || 30.4158),
+    longitude: missionState.lng !== undefined ? missionState.lng : (missionState.longitude || 79.3245),
+    altitude: missionState.altitude || '42.5m',
+    speed: missionState.speed || '8.6 m/s',
+    heading: missionState.heading !== undefined ? missionState.heading : 142.0,
+    source: 'SIMULATOR_DRONE',
+    locationSource: 'SIMULATOR TELEMETRY'
+  };
 
-  // Synchronize location changes into locationPath state
+  // Record continuous simulator drone flight path
   useEffect(() => {
-    if (deviceLocation && deviceLocation.latitude && deviceLocation.longitude) {
+    if (dronePosition.latitude && dronePosition.longitude) {
       setLocationPath(prev => {
         const last = prev[prev.length - 1];
-        if (!last || last.latitude !== deviceLocation.latitude || last.longitude !== deviceLocation.longitude) {
-          return [...prev.slice(-999), deviceLocation];
+        if (!last || Math.abs(last.latitude - dronePosition.latitude) > 0.000005 || Math.abs(last.longitude - dronePosition.longitude) > 0.000005) {
+          return [...prev.slice(-999), {
+            latitude: dronePosition.latitude,
+            longitude: dronePosition.longitude,
+            timestamp: new Date().toISOString()
+          }];
         }
         return prev;
       });
     }
-  }, [deviceLocation]);
+  }, [dronePosition.latitude, dronePosition.longitude]);
 
-  // 2. Fetch Initial Telemetry & Recorded Path History
+  // 2. Fetch Initial Telemetry & Recorded Flight Path
   useEffect(() => {
     let ws = null;
     let pollTimer = null;
@@ -89,7 +94,7 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.debug("Backend initial sync standby:", err);
+        console.debug("Backend telemetry standby:", err);
       }
     };
 
@@ -98,7 +103,7 @@ export default function App() {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          console.log("WebSocket connected to AERIS Unified Command Stream");
+          console.log("WebSocket connected to AERIS Simulator Command Stream");
         };
 
         ws.onmessage = (event) => {
@@ -110,11 +115,6 @@ export default function App() {
               }
             } else if (msg.type === 'telemetry') {
               setMissionState(prev => ({ ...prev, ...msg.data }));
-            } else if (msg.type === 'location') {
-              // Location update from server
-              if (msg.data) {
-                setLocationPath(prev => [...prev.slice(-999), msg.data]);
-              }
             } else if (msg.type === 'detection') {
               const det = msg.data;
               const now = new Date().toISOString().substring(11, 19);
@@ -301,8 +301,8 @@ export default function App() {
     } else if (action === 'RETURN_TO_BASE') {
       setEventLog(prev => [{ time: now, text: "Operator Command: Return-to-Base (RTL) Initiated", color: "red" }, ...prev]);
     } else if (action === 'MARK_LOCATION') {
-      const locText = deviceLocation ? `[${deviceLocation.latitude.toFixed(5)}, ${deviceLocation.longitude.toFixed(5)}]` : 'Current Fix';
-      setEventLog(prev => [{ time: now, text: `Tactical Waypoint Logged at: ${locText}`, color: "blue" }, ...prev]);
+      const locText = `[${dronePosition.latitude.toFixed(5)}, ${dronePosition.longitude.toFixed(5)}]`;
+      setEventLog(prev => [{ time: now, text: `Tactical Drone Waypoint Logged at: ${locText}`, color: "blue" }, ...prev]);
     }
   };
 
@@ -348,8 +348,7 @@ export default function App() {
                   <div className="col-span-3 h-full min-h-0">
                     <MissionTelemetry 
                       missionState={missionState}
-                      deviceLocation={deviceLocation}
-                      locationStatus={locationStatus}
+                      dronePosition={dronePosition}
                       isOffline={isOffline}
                       isBacktracking={isBacktracking}
                     />
@@ -357,8 +356,7 @@ export default function App() {
                   <div className="col-span-5 h-full min-h-0 shadow-2xl">
                     <LiveDisasterMap 
                       missionState={missionState}
-                      deviceLocation={deviceLocation}
-                      locationStatus={locationStatus}
+                      dronePosition={dronePosition}
                       locationPath={locationPath}
                       detectionEvents={detectionEvents}
                       survivors={SURVIVORS_LIST}
@@ -375,8 +373,7 @@ export default function App() {
                   <div className="col-span-4 h-full min-h-0 shadow-2xl">
                     <LiveDisasterMap 
                       missionState={missionState}
-                      deviceLocation={deviceLocation}
-                      locationStatus={locationStatus}
+                      dronePosition={dronePosition}
                       locationPath={locationPath}
                       detectionEvents={detectionEvents}
                       survivors={SURVIVORS_LIST}
@@ -393,8 +390,7 @@ export default function App() {
                   <div className="col-span-8 h-full min-h-0 shadow-2xl">
                     <LiveDisasterMap 
                       missionState={missionState}
-                      deviceLocation={deviceLocation}
-                      locationStatus={locationStatus}
+                      dronePosition={dronePosition}
                       locationPath={locationPath}
                       detectionEvents={detectionEvents}
                       survivors={SURVIVORS_LIST}
@@ -412,8 +408,7 @@ export default function App() {
                   <div className="col-span-6 h-full min-h-0 shadow-2xl">
                     <LiveDisasterMap 
                       missionState={missionState}
-                      deviceLocation={deviceLocation}
-                      locationStatus={locationStatus}
+                      dronePosition={dronePosition}
                       locationPath={locationPath}
                       detectionEvents={detectionEvents}
                       survivors={SURVIVORS_LIST}
@@ -454,11 +449,10 @@ export default function App() {
               checkpoints: { currentId: missionState.checkpoint, total: 4 },
               flightMode: missionState.flightMode,
               position: { altitudeAgl: missionState.altitude, groundSpeed: missionState.speed },
-              battery: { percentage: Math.round(missionState.battery) }
+              battery: { percentage: Math.round(missionState.battery || 84) }
             }}
+            dronePosition={dronePosition}
             isOfflineMode={isOffline}
-            deviceLocation={deviceLocation}
-            locationStatus={locationStatus}
           />
         </div>
       ) : activeTab === 'aeris01-operations' ? (

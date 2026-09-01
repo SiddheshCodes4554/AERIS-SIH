@@ -13,22 +13,23 @@ import {
   Layers, 
   Crosshair,
   MapPin,
-  LocateFixed,
-  ShieldAlert
+  LocateFixed
 } from 'lucide-react';
 
-// 1. Prominent Animated AERIS Device Location Marker
-const createDeviceMarker = (heading, accuracy, status) => {
-  const isFix = status === 'ACTIVE';
-  const color = isFix ? '#3B8EDB' : '#F5A623';
-  const pulseColor = isFix ? 'rgba(59, 142, 219, 0.45)' : 'rgba(245, 166, 35, 0.45)';
+// 1. Prominent Animated AERIS-01 Simulator Drone Marker
+const createDroneMarker = (heading, altitude, speed) => {
+  const color = '#3B8EDB';
+  const pulseColor = 'rgba(59, 142, 219, 0.45)';
+
+  const altStr = typeof altitude === 'number' ? `${altitude.toFixed(1)}m` : altitude;
+  const spdStr = typeof speed === 'number' ? `${speed.toFixed(1)}m/s` : speed;
 
   return L.divIcon({
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
-        <!-- Telemetry Callout Badge -->
+        <!-- Drone Telemetry Callout Badge -->
         <div style="background: #0B0E0F; border: 1.5px solid ${color}; color: #F2F4F3; font-family: monospace; font-size: 8px; font-weight: 700; padding: 1.5px 6px; border-radius: 9999px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 12px ${pulseColor}; letter-spacing: 0.5px;">
-          AERIS DEVICE • ${accuracy ? `±${Math.round(accuracy)}m` : 'LOCATING'}
+          AERIS-01 • ${altStr} • ${spdStr}
         </div>
         <!-- Directional Cone & Center Disc -->
         <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
@@ -41,16 +42,16 @@ const createDeviceMarker = (heading, accuracy, status) => {
         </div>
       </div>
     `,
-    className: 'aeris-device-icon',
-    iconSize: [120, 52],
-    iconAnchor: [60, 36],
+    className: 'aeris-drone-icon',
+    iconSize: [130, 52],
+    iconAnchor: [65, 36],
     popupAnchor: [0, -36]
   });
 };
 
-// 2. Real YOLO Person Observation Marker (Honestly labeled as observed device position)
+// 2. Real YOLO Person Observation Marker (Captured at Drone Position)
 const createPersonObservationIcon = (obs) => {
-  const confPct = Math.round((obs.confidence || 0.9) * 100);
+  const confPct = Math.round((obs.confidence || 0.95) * 100);
   const priority = obs.priority || (confPct >= 85 ? 'HIGH' : 'MED');
   const color = priority === 'HIGH' ? '#70EB78' : '#F5A623';
 
@@ -74,20 +75,18 @@ const createPersonObservationIcon = (obs) => {
   });
 };
 
-// 3. Map Pan Controller (Smoothly Centers on First Fix & Handles Recenter Button)
+// 3. Map Pan Controller (Smoothly Centers on First Telemetry Fix & Handles Recenter Button)
 function MapController({ targetCenter, shouldRecenter, onRecenterDone }) {
   const map = useMap();
   const hasInitialCenteredRef = useRef(false);
 
-  // Auto-center on first valid location
   useEffect(() => {
     if (targetCenter && targetCenter[0] && targetCenter[1] && !hasInitialCenteredRef.current) {
       hasInitialCenteredRef.current = true;
-      map.flyTo(targetCenter, 16, { animate: true, duration: 1.2 });
+      map.flyTo(targetCenter, 15, { animate: true, duration: 1.0 });
     }
   }, [targetCenter, map]);
 
-  // User-triggered manual recenter
   useEffect(() => {
     if (shouldRecenter && targetCenter && targetCenter[0] && targetCenter[1]) {
       map.flyTo(targetCenter, 16, { animate: true, duration: 0.8 });
@@ -100,8 +99,7 @@ function MapController({ targetCenter, shouldRecenter, onRecenterDone }) {
 
 export default function LiveDisasterMap({
   missionState = {},
-  deviceLocation = null,
-  locationStatus = 'ACQUIRING',
+  dronePosition = null,
   locationPath = [],
   detectionEvents = [],
   survivors = [],
@@ -113,15 +111,12 @@ export default function LiveDisasterMap({
   const [showDetections, setShowDetections] = useState(true);
   const [triggerRecenter, setTriggerRecenter] = useState(false);
 
-  // Derive active coordinates (Real Device Location)
-  const hasRealCoords = deviceLocation && deviceLocation.latitude && deviceLocation.longitude;
-  const currentPos = hasRealCoords 
-    ? [deviceLocation.latitude, deviceLocation.longitude] 
-    : [30.5610, 79.5680]; // Initial map view bounds while acquiring fix
+  // Authoritative Drone Coordinates from Telemetry
+  const droneLat = dronePosition?.latitude || missionState?.lat || 30.4158;
+  const droneLng = dronePosition?.longitude || missionState?.lng || 79.3245;
+  const currentPos = [droneLat, droneLng];
 
-  const accuracyMeters = deviceLocation?.accuracy || 25;
-
-  // Filter real YOLO person observations that contain valid device observation locations
+  // Filter person observations that have valid drone coordinates
   const personObservations = detectionEvents.filter(
     (ev) => ev.class === 'person' && ev.observation_location && ev.observation_location.latitude && ev.observation_location.longitude
   );
@@ -136,11 +131,11 @@ export default function LiveDisasterMap({
             Live Mission Map
           </h2>
           <span className="text-[9px] font-mono text-aeris-green px-1.5 py-0.2 rounded bg-aeris-green/10 border border-aeris-green/20">
-            DEVICE LOCATION
+            SIMULATOR TELEMETRY
           </span>
         </div>
 
-        {/* Minimal Layer Toggles: [ RECORDED PATH ] [ HEAT MAP ] [ OBSERVATIONS ] */}
+        {/* Minimal Layer Toggles: [ FLIGHT PATH ] [ HEAT MAP ] [ OBSERVATIONS ] */}
         <div className="flex items-center space-x-1 text-[9.5px] font-mono">
           <button
             onClick={() => setShowRoute(!showRoute)}
@@ -150,7 +145,7 @@ export default function LiveDisasterMap({
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
             }`}
           >
-            PATH ({locationPath.length})
+            FLIGHT PATH ({locationPath.length})
           </button>
 
           <button
@@ -187,7 +182,7 @@ export default function LiveDisasterMap({
           zoomControl={false}
         >
           <MapController 
-            targetCenter={hasRealCoords ? currentPos : null}
+            targetCenter={currentPos}
             shouldRecenter={triggerRecenter}
             onRecenterDone={() => setTriggerRecenter(false)}
           />
@@ -200,43 +195,24 @@ export default function LiveDisasterMap({
             maxZoom={18}
           />
 
-          {/* 3. Location Accuracy Circle (Radius in meters matching browser accuracy) */}
-          {hasRealCoords && (
-            <Circle
-              center={currentPos}
-              radius={accuracyMeters}
-              pathOptions={{
-                color: '#3B8EDB',
-                weight: 1.5,
-                fillColor: '#3B8EDB',
-                fillOpacity: 0.12,
-                dashArray: '4, 4'
-              }}
-            >
-              <Tooltip direction="center" className="font-mono text-xs text-cyan-200 bg-black/85 border border-cyan-500/30">
-                LOCATION ACCURACY: ±{Math.round(accuracyMeters)}m
-              </Tooltip>
-            </Circle>
-          )}
-
-          {/* 4. Real Recorded Movement Breadcrumb Trail */}
+          {/* 3. Real Recorded Drone Flight Breadcrumb Trail */}
           {showRoute && locationPath.length > 1 && (
             <Polyline
               positions={locationPath.map(p => [p.latitude, p.longitude])}
               pathOptions={{
-                color: '#62C370',
+                color: '#3B8EDB',
                 weight: 3,
                 opacity: 0.9,
                 dashArray: '4, 6'
               }}
             >
-              <Tooltip sticky direction="top" className="font-mono text-xs text-green-300 bg-black/90">
-                RECORDED DEVICE PATH ({locationPath.length} points)
+              <Tooltip sticky direction="top" className="font-mono text-xs text-blue-300 bg-black/90">
+                DRONE PATROL FLIGHT PATH ({locationPath.length} points)
               </Tooltip>
             </Polyline>
           )}
 
-          {/* 5. Geographically Connected Disaster Risk Heat Map Layer */}
+          {/* 4. Disaster Risk Heat Map Layer */}
           {showHeatmap && heatmapData.map((zone) => (
             <Circle
               key={zone.id}
@@ -256,7 +232,7 @@ export default function LiveDisasterMap({
             </Circle>
           ))}
 
-          {/* 6. Real YOLO Person Observation Markers (Captured at device location) */}
+          {/* 5. Real YOLO Person Observation Markers (Recorded at drone flight coordinates) */}
           {showDetections && personObservations.map((obs, idx) => (
             <Marker
               key={obs.event_id || `obs-${idx}`}
@@ -273,79 +249,56 @@ export default function LiveDisasterMap({
                   </div>
                   <div className="space-y-1 text-[11px] font-sans">
                     <p className="flex justify-between"><span className="text-[#8C9492]">Confidence:</span><strong className="text-aeris-green font-mono">{Math.round((obs.confidence || 0.95) * 100)}%</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Obs. Location:</span><strong className="text-[#F2F4F3] font-mono">{obs.observation_location.latitude.toFixed(6)}, {obs.observation_location.longitude.toFixed(6)}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Accuracy:</span><strong className="text-[#F2F4F3] font-mono">±{Math.round(obs.observation_location.accuracy || 25)}m</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-cyan font-mono">DEVICE LOCATION</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Drone Position:</span><strong className="text-[#F2F4F3] font-mono">{obs.observation_location.latitude.toFixed(5)}, {obs.observation_location.longitude.toFixed(5)}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Altitude:</span><strong className="text-[#F2F4F3] font-mono">{obs.observation_location.altitude || missionState.altitude || '42.5m'}</strong></p>
+                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-cyan font-mono">SIMULATOR TELEMETRY</strong></p>
                     <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{new Date(obs.timestamp).toLocaleTimeString()}</strong></p>
-                    <p className="text-[10px] text-[#A0AAB0] pt-1 border-t border-white/10 leading-tight italic">
-                      * Position represents device coordinates when optical detection occurred.
-                    </p>
                   </div>
                 </div>
               </Popup>
             </Marker>
           ))}
 
-          {/* 7. Active Real Device Location Marker */}
-          {hasRealCoords && (
-            <Marker
-              position={currentPos}
-              icon={createDeviceMarker(deviceLocation.heading, accuracyMeters, locationStatus)}
-            >
-              <Popup>
-                <div className="font-sans text-xs p-1 text-[#F2F4F3]">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
-                    <span className="font-bold text-aeris-cyan font-mono">AERIS DEVICE POSITION</span>
-                    <span className="text-aeris-green text-[9.5px] font-mono">● {locationStatus}</span>
-                  </div>
-                  <div className="space-y-1 text-[11px] font-mono">
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Lat:</span><strong>{deviceLocation.latitude.toFixed(6)}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Lng:</span><strong>{deviceLocation.longitude.toFixed(6)}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Accuracy:</span><strong className="text-aeris-cyan">±{Math.round(accuracyMeters)} m</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-green">DEVICE LOCATION</strong></p>
-                  </div>
+          {/* 6. Active AERIS-01 Simulator Drone Marker */}
+          <Marker
+            position={currentPos}
+            icon={createDroneMarker(
+              dronePosition?.heading || missionState?.heading || 142,
+              dronePosition?.altitude || missionState?.altitude || '42.5m',
+              dronePosition?.speed || missionState?.speed || '8.6 m/s'
+            )}
+          >
+            <Popup>
+              <div className="font-sans text-xs p-1 text-[#F2F4F3]">
+                <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1">
+                  <span className="font-bold text-aeris-cyan font-mono">{missionState.droneId || 'AERIS-01'}</span>
+                  <span className="text-aeris-green text-[9.5px] font-mono">● {missionState.flightMode || 'SEARCH'}</span>
                 </div>
-              </Popup>
-            </Marker>
-          )}
+                <div className="space-y-1 text-[11px] font-mono">
+                  <p className="flex justify-between"><span className="text-[#8C9492]">Lat:</span><strong>{droneLat.toFixed(5)}° N</strong></p>
+                  <p className="flex justify-between"><span className="text-[#8C9492]">Lng:</span><strong>{droneLng.toFixed(5)}° E</strong></p>
+                  <p className="flex justify-between"><span className="text-[#8C9492]">Alt:</span><strong className="text-aeris-cyan">{dronePosition?.altitude || missionState.altitude || '42.5m'}</strong></p>
+                  <p className="flex justify-between"><span className="text-[#8C9492]">Speed:</span><strong className="text-white">{dronePosition?.speed || missionState.speed || '8.6 m/s'}</strong></p>
+                  <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-green">SIMULATOR TELEMETRY</strong></p>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
         </MapContainer>
 
-        {/* 8. Location Status Banner (Top-Center) */}
-        {locationStatus === 'DENIED' && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-aeris-red/90 border border-aeris-red px-3.5 py-1.5 rounded-card backdrop-blur-md font-mono text-[11px] text-white font-bold shadow-glow-red flex items-center space-x-2 pointer-events-auto">
-            <ShieldAlert className="w-3.5 h-3.5 text-white animate-pulse" />
-            <span>LOCATION ACCESS DENIED — Enable browser location permission</span>
-          </div>
-        )}
-
-        {locationStatus === 'ACQUIRING' && !hasRealCoords && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-[#0B0E0F]/90 border border-aeris-cyan/40 px-3.5 py-1.5 rounded-card backdrop-blur-md font-mono text-[11px] text-aeris-cyan font-bold flex items-center space-x-2 pointer-events-auto">
-            <Navigation className="w-3.5 h-3.5 text-aeris-cyan animate-spin" />
-            <span>ACQUIRING REAL DEVICE LOCATION...</span>
-          </div>
-        )}
-
-        {/* 9. Minimal Floating Status & Recenter Button (Bottom-Right) */}
+        {/* 7. Minimal Floating Recenter & Telemetry Status (Bottom-Right) */}
         <div className="absolute bottom-2.5 right-2.5 z-[1000] flex items-center space-x-1.5 font-mono text-[9.5px] pointer-events-auto">
-          {hasRealCoords && (
-            <button
-              onClick={() => setTriggerRecenter(true)}
-              className="bg-[#0B0E0F]/95 border border-aeris-cyan/40 hover:border-aeris-cyan px-2.5 py-1 rounded-card backdrop-blur-md text-aeris-cyan flex items-center space-x-1 transition-colors"
-              title="Recenter Map to Device Position"
-            >
-              <LocateFixed className="w-3 h-3 text-aeris-cyan" />
-              <span>RECENTER</span>
-            </button>
-          )}
+          <button
+            onClick={() => setTriggerRecenter(true)}
+            className="bg-[#0B0E0F]/95 border border-aeris-cyan/40 hover:border-aeris-cyan px-2.5 py-1 rounded-card backdrop-blur-md text-aeris-cyan flex items-center space-x-1 transition-colors"
+            title="Recenter Map to Drone Position"
+          >
+            <LocateFixed className="w-3 h-3 text-aeris-cyan" />
+            <span>RECENTER DRONE</span>
+          </button>
 
           <div className="bg-[#0B0E0F]/95 border border-aeris-border px-2.5 py-1 rounded-card backdrop-blur-md text-aeris-textSecondary">
-            {hasRealCoords ? (
-              <>
-                <span className="text-aeris-green font-bold">● ACTIVE</span> • LAT: {deviceLocation.latitude.toFixed(5)} LNG: {deviceLocation.longitude.toFixed(5)} (±{Math.round(accuracyMeters)}m)
-              </>
-            ) : (
-              <span className="text-aeris-amber font-bold">● {locationStatus}</span>
-            )}
+            <span className="text-aeris-green font-bold">● SIMULATOR GPS</span> • LAT: {droneLat.toFixed(5)} LNG: {droneLng.toFixed(5)}
           </div>
         </div>
       </div>

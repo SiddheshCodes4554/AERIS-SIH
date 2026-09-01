@@ -8,7 +8,7 @@ from collections import deque
 from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger("aeris.location")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.INFO)
 
 def haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculates great-circle distance between two GPS coordinates in meters."""
@@ -40,79 +40,52 @@ class LocationService:
         
         self.lock = threading.Lock()
         
-        # Current Location State
-        self.current_location: Optional[Dict[str, Any]] = None
-        self.status: str = "initializing"  # "active" | "permission_denied" | "unavailable" | "timeout" | "not_supported" | "initializing"
-        self.source: str = "browser_geolocation"
+        # Authoritative Location Source: SIMULATOR_DRONE
+        self.source: str = "SIMULATOR_DRONE"
+        self.source_label: str = "SIMULATOR TELEMETRY"
+        self.status: str = "active"
         self.last_update: Optional[str] = None
         
-        # Path History (In-Memory Ring Buffer with max 1000 points)
+        # Flight Path History (In-Memory Ring Buffer with max 1000 points)
         self.path_history = deque(maxlen=1000)
         self._last_recorded_point = None
         self._last_recorded_time = 0.0
         
         # Filtering Configuration
-        self.min_distance_meters = float(os.getenv("LOCATION_MIN_DISTANCE", "3.0"))  # 3 meters min change
-        self.min_time_seconds = float(os.getenv("LOCATION_MIN_TIME", "5.0"))        # 5 seconds min time
+        self.min_distance_meters = float(os.getenv("LOCATION_MIN_DISTANCE", "1.5"))
+        self.min_time_seconds = float(os.getenv("LOCATION_MIN_TIME", "2.0"))
         
-        # Broadcast Callback (WebSocket)
         self.broadcast_callback = None
-        
         self._initialized = True
-        logger.info("AERIS LocationService initialized (Device Location Engine).")
+        logger.info("AERIS LocationService initialized (Authoritative Source: SIMULATOR_DRONE).")
 
-    def validate_coordinates(self, lat: Any, lng: Any, accuracy: Any = None) -> bool:
-        """Validates incoming latitude, longitude, and accuracy."""
-        try:
-            lat_f = float(lat)
-            lng_f = float(lng)
-            if not (-90.0 <= lat_f <= 90.0):
-                return False
-            if not (-180.0 <= lng_f <= 180.0):
-                return False
-            if accuracy is not None:
-                acc_f = float(accuracy)
-                if acc_f < 0.0:
-                    return False
-            return True
-        except (ValueError, TypeError):
-            return False
-
-    def update_location(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Validates and updates real device location, records path, and broadcasts."""
-        lat = payload.get("latitude")
-        lng = payload.get("longitude")
-        acc = payload.get("accuracy")
-
-        if not self.validate_coordinates(lat, lng, acc):
-            raise ValueError(f"Invalid GPS coordinates: lat={lat}, lng={lng}, accuracy={acc}")
-
-        now_iso = payload.get("timestamp") or (datetime.utcnow().isoformat() + "Z")
-        now_ts = time.time()
+    def get_current_location(self) -> Dict[str, Any]:
+        """Returns the authoritative simulated drone position from TelemetryService."""
+        from telemetry_service import telemetry_service
+        telem = telemetry_service.get_telemetry()
         
-        lat_f = float(lat)
-        lng_f = float(lng)
-        acc_f = float(acc) if acc is not None else None
-        
+        lat = telem.get("lat", 30.4158)
+        lng = telem.get("lng", 79.3245)
+        alt = telem.get("altitudeM", 42.5)
+        spd = telem.get("speedMs", 8.6)
+        hdg = telem.get("heading", 142.0)
+        now_iso = datetime.utcnow().isoformat() + "Z"
+
         loc_data = {
-            "latitude": lat_f,
-            "longitude": lng_f,
-            "accuracy": acc_f,
-            "altitude": float(payload["altitude"]) if payload.get("altitude") is not None else None,
-            "altitudeAccuracy": float(payload["altitudeAccuracy"]) if payload.get("altitudeAccuracy") is not None else None,
-            "heading": float(payload["heading"]) if payload.get("heading") is not None else None,
-            "speed": float(payload["speed"]) if payload.get("speed") is not None else None,
+            "latitude": lat,
+            "longitude": lng,
+            "altitude": alt,
+            "speed": spd,
+            "heading": hdg,
+            "accuracy": None, # Exact simulator coordinates
             "timestamp": now_iso,
-            "source": payload.get("source", "browser_geolocation")
+            "source": self.source,
+            "locationSource": self.source_label
         }
 
+        # Update recorded flight path
+        now_ts = time.time()
         with self.lock:
-            self.current_location = loc_data
-            self.status = "active"
-            self.source = loc_data["source"]
-            self.last_update = now_iso
-            
-            # Path Filtering: Record only if moved >= min_distance OR elapsed >= min_time
             should_record = False
             if self._last_recorded_point is None:
                 should_record = True
@@ -120,8 +93,8 @@ class LocationService:
                 dist = haversine_distance_meters(
                     self._last_recorded_point["latitude"],
                     self._last_recorded_point["longitude"],
-                    lat_f,
-                    lng_f
+                    lat,
+                    lng
                 )
                 time_elapsed = now_ts - self._last_recorded_time
                 if dist >= self.min_distance_meters or time_elapsed >= self.min_time_seconds:
@@ -129,75 +102,57 @@ class LocationService:
 
             if should_record:
                 path_point = {
-                    "latitude": lat_f,
-                    "longitude": lng_f,
-                    "accuracy": acc_f,
+                    "latitude": lat,
+                    "longitude": lng,
+                    "altitude": alt,
                     "timestamp": now_iso
                 }
                 self.path_history.append(path_point)
                 self._last_recorded_point = path_point
                 self._last_recorded_time = now_ts
+                self.last_update = now_iso
 
-        logger.info(f"Device Location Updated: [{lat_f:.6f}, {lng_f:.6f}] ±{acc_f or 0:.1f}m ({loc_data['source']})")
+        return {
+            "status": "active",
+            "location": loc_data
+        }
 
-        # Broadcast update over WebSocket
-        if self.broadcast_callback:
-            self.broadcast_callback({
-                "type": "location",
-                "data": loc_data
-            })
+    def update_location(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Receives external hardware GPS or simulator updates with priority check."""
+        src = payload.get("source", "")
+        # Reject browser geolocation updates as SIMULATOR_DRONE is authoritative
+        if src in ["browser_geolocation", "device_location"]:
+            logger.debug("Ignored browser geolocation update: SIMULATOR_DRONE is active source.")
+            return self.get_current_location()
 
-        return loc_data
+        lat = payload.get("latitude")
+        lng = payload.get("longitude")
+        alt = payload.get("altitude")
+        spd = payload.get("speed")
+        hdg = payload.get("heading")
 
-    def set_status(self, status: str, source: str = "browser_geolocation", reason: str = None):
-        """Sets location availability / permission status."""
+        from telemetry_service import telemetry_service
+        telemetry_service.update_simulator_telemetry(lat, lng, alt, spd, hdg)
+        return self.get_current_location()
+
+    def set_status(self, status: str, source: str = "SIMULATOR_DRONE", reason: str = None):
+        """Sets status if needed."""
         with self.lock:
             self.status = status
             self.source = source
-            if status != "active":
-                self.current_location = None
-
-        logger.warning(f"Location status updated: {status} ({reason or 'N/A'})")
-
-        if self.broadcast_callback:
-            self.broadcast_callback({
-                "type": "location_status",
-                "data": {
-                    "status": self.status,
-                    "source": self.source,
-                    "reason": reason,
-                    "timestamp": datetime.utcnow().isoformat() + "Z"
-                }
-            })
-
-    def get_current_location(self) -> Dict[str, Any]:
-        """Returns the current real device location or unavailable payload."""
-        with self.lock:
-            if self.current_location and self.status == "active":
-                return {
-                    "status": "active",
-                    "location": self.current_location
-                }
-            return {
-                "status": self.status if self.status != "active" else "unavailable",
-                "reason": "Location not received" if self.status == "initializing" else f"Location state: {self.status}"
-            }
 
     def get_status(self) -> Dict[str, Any]:
-        """Returns the current location operational and permission status."""
-        with self.lock:
-            acc = self.current_location["accuracy"] if self.current_location else None
-            return {
-                "status": self.status,
-                "permission": "granted" if self.status == "active" else ("denied" if self.status == "permission_denied" else "prompt"),
-                "source": self.source,
-                "last_update": self.last_update,
-                "accuracy": acc,
-                "has_fix": (self.current_location is not None)
-            }
+        """Returns location operational status."""
+        return {
+            "status": "active",
+            "source": self.source,
+            "locationSource": self.source_label,
+            "last_update": self.last_update or datetime.utcnow().isoformat() + "Z",
+            "has_fix": True
+        }
 
     def get_path(self) -> Dict[str, Any]:
-        """Returns the chronological recorded breadcrumb path."""
+        """Returns the recorded flight path history from the simulated drone."""
         with self.lock:
             return {
                 "total_points": len(self.path_history),

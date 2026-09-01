@@ -131,6 +131,13 @@ class ZoneSelectRequest(BaseModel):
 class ModeSelectRequest(BaseModel):
     mode: str
 
+class SimulatorTelemetryRequest(BaseModel):
+    latitude: float
+    longitude: float
+    altitude: Optional[float] = None
+    speed: Optional[float] = None
+    heading: Optional[float] = None
+
 class MissionCommandRequest(BaseModel):
     action: str
 
@@ -248,6 +255,19 @@ async def get_detections_history():
 async def get_current_telemetry():
     """Returns current real-time UAV flight telemetry and mission state."""
     return telemetry_service.get_telemetry()
+
+
+@app.post("/api/telemetry/simulator")
+async def update_simulator_telemetry_endpoint(payload: SimulatorTelemetryRequest):
+    """Receives direct telemetry updates from Gazebo / ROS2 bridge."""
+    telemetry_service.update_simulator_telemetry(
+        lat=payload.latitude,
+        lng=payload.longitude,
+        altitude=payload.altitude,
+        speed=payload.speed,
+        heading=payload.heading
+    )
+    return {"success": True, "telemetry": telemetry_service.get_telemetry()}
 
 
 @app.post("/api/telemetry/zone")

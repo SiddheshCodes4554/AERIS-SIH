@@ -188,13 +188,13 @@ export default function AIDetectionsPanel({ onDetectionsUpdate }) {
                       </strong>
                     </div>
                     <div className="flex items-center justify-between text-[7.5px] text-aeris-textMuted">
-                      <span>Accuracy: ±{Math.round(obs.accuracy || 25)}m</span>
-                      <span className="text-aeris-green font-bold">DEVICE LOCATION</span>
+                      <span>Drone Alt: {obs.altitude || '42.5m'}</span>
+                      <span className="text-aeris-green font-bold">SIMULATOR TELEMETRY</span>
                     </div>
                   </div>
                 ) : (
                   <div className="text-[8px] text-aeris-textMuted flex items-center justify-between">
-                    <span>Obs. Location: Waiting for GPS fix</span>
+                    <span>Drone Pos: Telemetry Syncing...</span>
                     <span>{item.timestamp ? item.timestamp.substring(11, 19) : ''}</span>
                   </div>
                 )}

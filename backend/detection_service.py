@@ -344,10 +344,9 @@ class DetectionService:
                     should_emit = True
                 
                 if should_emit:
-                    # Retrieve current real device location context
-                    from location_service import location_service
-                    current_loc_res = location_service.get_current_location()
-                    obs_loc = current_loc_res.get("location") if current_loc_res.get("status") == "active" else None
+                    # Retrieve current drone telemetry location context from TelemetryService
+                    from telemetry_service import telemetry_service
+                    telem = telemetry_service.get_telemetry()
 
                     # Rule-based priority determination
                     priority = "HIGH PRIORITY" if conf >= 0.85 else ("MEDIUM PRIORITY" if conf >= 0.65 else "LOW PRIORITY")
@@ -364,24 +363,23 @@ class DetectionService:
                         "priority": priority,
                         "bounding_box": {"x1": x1, "y1": y1, "w": w, "h": h},
                         "observation_location": {
-                            "latitude": obs_loc["latitude"],
-                            "longitude": obs_loc["longitude"],
-                            "accuracy": obs_loc.get("accuracy"),
-                            "altitude": obs_loc.get("altitude"),
-                            "heading": obs_loc.get("heading"),
-                            "speed": obs_loc.get("speed"),
-                            "timestamp": obs_loc.get("timestamp"),
-                            "source": obs_loc.get("source", "browser_geolocation")
-                        } if obs_loc else None,
-                        "location_accuracy": obs_loc.get("accuracy") if obs_loc else None,
-                        "location_source": obs_loc.get("source", "browser_geolocation") if obs_loc else "LOCATION_UNAVAILABLE"
+                            "latitude": telem.get("lat", 30.4158),
+                            "longitude": telem.get("lng", 79.3245),
+                            "altitude": telem.get("altitudeM", 42.5),
+                            "speed": telem.get("speedMs", 8.6),
+                            "heading": telem.get("heading", 142.0),
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                            "source": "SIMULATOR_DRONE"
+                        },
+                        "location_source": "SIMULATOR TELEMETRY"
                     }
                     self.event_history.append(event_payload)
                     self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
                     
-                    # Highlighted Formatted Terminal Output with Location Context
-                    loc_str = f"[{obs_loc['latitude']:.6f}, {obs_loc['longitude']:.6f}] ±{obs_loc.get('accuracy') or 0:.1f}m" if obs_loc else "NO GPS FIX"
-                    print(f">>> [AERIS TARGET ACQUIRED] {display_name} ({priority}) | Conf: {conf*100:.1f}% | Obs Location: {loc_str} | Latency: {self.inference_time_ms:.1f}ms")
+                    # Highlighted Formatted Terminal Output with Drone Telemetry Location
+                    drone_lat = telem.get('lat', 30.4158)
+                    drone_lng = telem.get('lng', 79.3245)
+                    print(f">>> [AERIS TARGET ACQUIRED] {display_name} ({priority}) | Conf: {conf*100:.1f}% | Drone Obs Point: [{drone_lat:.5f}, {drone_lng:.5f}] | Latency: {self.inference_time_ms:.1f}ms")
                     
                     if self.event_callback:
                         self.event_callback(event_payload)

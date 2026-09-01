@@ -17,18 +17,15 @@ import {
 
 export default function MissionTelemetry({ 
   missionState = {}, 
-  deviceLocation = null,
-  locationStatus = 'ACQUIRING',
+  dronePosition = null,
   isOffline, 
   isBacktracking 
 }) {
-  const speedNum = parseFloat(missionState.speed) || 8.5;
-  const altitudeNum = parseFloat(missionState.altitude) || 42.5;
+  const speedNum = parseFloat(dronePosition?.speed || missionState.speed) || 8.6;
+  const altitudeNum = parseFloat(dronePosition?.altitude || missionState.altitude) || 42.5;
 
-  const hasCoords = deviceLocation && deviceLocation.latitude && deviceLocation.longitude;
-  const latStr = hasCoords ? deviceLocation.latitude.toFixed(6) : '--.------';
-  const lngStr = hasCoords ? deviceLocation.longitude.toFixed(6) : '--.------';
-  const accStr = hasCoords && deviceLocation.accuracy ? `±${Math.round(deviceLocation.accuracy)} m` : '-- m';
+  const lat = dronePosition?.latitude || missionState.lat || 30.4158;
+  const lng = dronePosition?.longitude || missionState.lng || 79.3245;
 
   return (
     <div className="w-full h-full aeris-panel-container p-3 flex flex-col justify-between select-none font-sans overflow-hidden">
@@ -46,38 +43,32 @@ export default function MissionTelemetry({
           </span>
         </div>
 
-        {/* Real Device Location Card */}
+        {/* Drone Telemetry Coordinates Card */}
         <div className="aeris-surface-card p-2.5 mb-2 font-mono border-l-2 border-l-aeris-cyan">
           <div className="flex items-center justify-between text-[9.5px] text-aeris-textSecondary mb-1">
             <span className="flex items-center text-aeris-cyan font-bold">
-              <MapPin className="w-3 h-3 mr-1" />
-              LOCATION
+              <Navigation className="w-3 h-3 mr-1" />
+              DRONE TELEMETRY
             </span>
-            <span className={`text-[8.5px] font-bold px-1.5 py-0.2 rounded ${
-              locationStatus === 'ACTIVE'
-                ? 'bg-aeris-green/20 text-aeris-green border border-aeris-green/30'
-                : locationStatus === 'DENIED'
-                ? 'bg-aeris-red/20 text-aeris-red border border-aeris-red/30'
-                : 'bg-aeris-amber/20 text-aeris-amber border border-aeris-amber/30 animate-pulse'
-            }`}>
-              ● {locationStatus}
+            <span className="text-[8.5px] font-bold px-1.5 py-0.2 rounded bg-aeris-green/20 text-aeris-green border border-aeris-green/30">
+              ● SIMULATOR FIX
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-1 text-[10px] my-1">
             <div>
               <span className="text-[8px] text-aeris-textMuted block">LATITUDE</span>
-              <strong className="text-[#F2F4F3]">{latStr}</strong>
+              <strong className="text-[#F2F4F3]">{lat.toFixed(5)}° N</strong>
             </div>
             <div>
               <span className="text-[8px] text-aeris-textMuted block">LONGITUDE</span>
-              <strong className="text-[#F2F4F3]">{lngStr}</strong>
+              <strong className="text-[#F2F4F3]">{lng.toFixed(5)}° E</strong>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-[8.5px] text-aeris-textMuted pt-1 border-t border-white/5">
-            <span>Accuracy: <strong className="text-aeris-cyan font-bold">{accStr}</strong></span>
-            <span className="text-aeris-green font-bold">DEVICE LOCATION</span>
+            <span>Fix: <strong className="text-aeris-green font-bold">RTK FIXED (18 Sats)</strong></span>
+            <span className="text-aeris-cyan font-bold">SIMULATOR</span>
           </div>
         </div>
 
@@ -90,10 +81,10 @@ export default function MissionTelemetry({
 
           <div className="flex items-baseline space-x-1.5 mb-1">
             <span className="text-2xl font-light text-aeris-green tracking-tight">
-              {missionState.battery || 82}%
+              {missionState.battery || 84}%
             </span>
             <span className="text-[9px] text-aeris-textMuted font-sans">
-              21.8 V • 31.4°C
+              22.2 V • 34.2°C
             </span>
           </div>
 
@@ -101,7 +92,7 @@ export default function MissionTelemetry({
           <div className="w-full bg-[#0B0E0F] h-1.5 rounded-full overflow-hidden">
             <div 
               className="bg-aeris-green h-full rounded-full transition-all duration-500 shadow-glow-green" 
-              style={{ width: `${missionState.battery || 82}%` }}
+              style={{ width: `${missionState.battery || 84}%` }}
             />
           </div>
         </div>
@@ -111,15 +102,15 @@ export default function MissionTelemetry({
           <div className="aeris-surface-card p-2">
             <span className="text-[9px] text-aeris-textMuted block">ALTITUDE</span>
             <div className="text-lg font-light text-aeris-textPrimary mt-0.5">
-              {altitudeNum} <span className="text-[10px] text-aeris-textSecondary">m</span>
+              {altitudeNum.toFixed(1)} <span className="text-[10px] text-aeris-textSecondary">m</span>
             </div>
-            <span className="text-[8.5px] text-aeris-textMuted block">AGL CARRIER</span>
+            <span className="text-[8.5px] text-aeris-textMuted block">AGL TELEMETRY</span>
           </div>
 
           <div className="aeris-surface-card p-2">
             <span className="text-[9px] text-aeris-textMuted block">SPEED</span>
             <div className="text-lg font-light text-aeris-textPrimary mt-0.5">
-              {speedNum} <span className="text-[10px] text-aeris-textSecondary">m/s</span>
+              {speedNum.toFixed(1)} <span className="text-[10px] text-aeris-textSecondary">m/s</span>
             </div>
             <span className="text-[8.5px] text-aeris-textMuted block">{(speedNum * 3.6).toFixed(1)} km/h</span>
           </div>
@@ -144,18 +135,18 @@ export default function MissionTelemetry({
 
         <div className="space-y-1 text-[9px] text-aeris-textSecondary pt-1 border-t border-white/10">
           <div className="flex justify-between">
-            <span>Local AI Inference:</span>
+            <span>Edge AI Inference:</span>
             <strong className="text-aeris-cyan font-bold">ACTIVE (Jetson Orin)</strong>
           </div>
           <div className="flex justify-between">
             <span>Data Buffer:</span>
             <strong className={isOffline || isBacktracking ? 'text-aeris-amber font-bold' : 'text-aeris-textPrimary'}>
-              {isOffline || isBacktracking ? `${missionState.bufferedEventsCount || 18} Events` : '0 Events (Synced)'}
+              {isOffline || isBacktracking ? `${missionState.bufferedEventsCount || 24} Events` : '0 Events (Synced)'}
             </strong>
           </div>
           <div className="flex justify-between">
             <span>Last Connected:</span>
-            <strong className="text-aeris-green font-bold">{missionState.lastConnectedCheckpoint || 'CP-03'}</strong>
+            <strong className="text-aeris-green font-bold">{missionState.lastConnectedCheckpoint || 'CP-02 (Rishi Riverbank)'}</strong>
           </div>
         </div>
       </div>

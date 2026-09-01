@@ -65,6 +65,10 @@ class TelemetryService:
         self.active_zone_id = "chamoli-flood"
         self.zone_config = DISASTER_ZONES_CONFIG[self.active_zone_id]
         
+        # Authoritative Location Source
+        self.location_source = "SIMULATOR_DRONE"
+        self.location_source_label = "SIMULATOR TELEMETRY"
+        
         # Flight State
         self.drone_id = "AERIS-01"
         self.flight_mode = "AUTONOMOUS SEARCH"
@@ -84,9 +88,9 @@ class TelemetryService:
         self.roll = -0.8
         self.rssi_dbm = -64
         self.satellites = 18
-        self.gps_fix = "RTK FIXED"
+        self.gps_fix = "SIMULATOR RTK FIXED"
         
-        # Coordinates & Progress
+        # Drone Coordinates & Progress
         self.lat = self.zone_config["center_lat"]
         self.lng = self.zone_config["center_lng"]
         self.mission_progress = 38
@@ -121,6 +125,20 @@ class TelemetryService:
             logger.info(f"Switched disaster operational zone to {zone_id}")
             return self.get_telemetry()
         return None
+
+    def update_simulator_telemetry(self, lat: float, lng: float, altitude: float = None, speed: float = None, heading: float = None):
+        """Direct external telemetry injection from Gazebo/ROS2 bridge."""
+        with self.telemetry_lock:
+            self.lat = float(lat)
+            self.lng = float(lng)
+            if altitude is not None:
+                self.altitude = float(altitude)
+            if speed is not None:
+                self.speed = float(speed)
+            if heading is not None:
+                self.heading = float(heading)
+        if self.broadcast_callback:
+            self.broadcast_callback(self.get_telemetry())
 
     def set_connection_mode(self, mode: str):
         """Sets failover mode: 'NORMAL', 'SIGNAL_LOSS', 'BACKTRACKING', 'RECONNECTED'."""
@@ -169,7 +187,7 @@ class TelemetryService:
         return self.get_telemetry()
 
     def get_telemetry(self):
-        """Returns structured full UAV telemetry payload."""
+        """Returns structured full UAV telemetry payload with authoritative simulator source."""
         with self.telemetry_lock:
             cps = self.zone_config["checkpoints"]
             cur_cp = cps[self.current_checkpoint_idx % len(cps)]
@@ -197,7 +215,9 @@ class TelemetryService:
                 "temperatureC": round(self.temperature_c, 1),
                 "orinTempC": round(self.orin_temp_c, 1),
                 "altitude": f"{round(self.altitude, 1)}m",
+                "altitudeM": round(self.altitude, 1),
                 "speed": f"{round(self.speed, 1)} m/s",
+                "speedMs": round(self.speed, 1),
                 "groundSpeedKmh": round(self.speed * 3.6, 1),
                 "heading": round(self.heading, 1),
                 "pitch": round(self.pitch, 1),
@@ -206,8 +226,12 @@ class TelemetryService:
                 "satellites": self.satellites,
                 "gpsFix": self.gps_fix,
                 "coordinates": f"{round(self.lat, 5)}° N, {round(self.lng, 5)}° E",
+                "latitude": self.lat,
+                "longitude": self.lng,
                 "lat": self.lat,
                 "lng": self.lng,
+                "source": self.location_source,
+                "locationSource": self.location_source_label,
                 "missionProgress": self.mission_progress,
                 "checkpoint": cur_cp,
                 "nextCheckpoint": next_cp,
@@ -236,11 +260,11 @@ class TelemetryService:
                     self.pitch = 1.2 + 0.4 * math.sin(t * 1.2)
                     self.roll = -0.8 + 0.5 * math.cos(t * 1.1)
                     
-                    # Slowly advance drone along patrol route
+                    # Advance drone along patrol route
                     self.lat += 0.000003 * math.cos(math.radians(self.heading))
                     self.lng += 0.000003 * math.sin(math.radians(self.heading))
                 
-                # 2. Slow battery drain
+                # 2. Battery drain
                 self.battery = max(15.0, self.battery - 0.0005)
                 self.voltage = 19.5 + (self.battery / 100.0) * 3.0
                 
