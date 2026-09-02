@@ -50,33 +50,114 @@ const createDroneMarker = (heading, altitude, speed, locationSource) => {
   });
 };
 
-// 2. Real YOLO Person Observation Marker (Captured at Drone Position)
-const createPersonObservationIcon = (obs) => {
-  const confPct = Math.round((obs.confidence || 0.95) * 100);
-  const priority = obs.priority || (confPct >= 85 ? 'HIGH' : 'MED');
-  const color = priority === 'HIGH' ? '#70EB78' : '#F5A623';
+// 2. Spatial Clustering Utility (Deduplicates overlapping detection markers into spatial target clusters)
+function clusterObservations(events, maxRadiusMeters = 25) {
+  const clusters = [];
+  const R = 6371000; // Earth radius in meters
+
+  events.forEach((ev) => {
+    if (
+      !ev.observation_location ||
+      !Number.isFinite(ev.observation_location.latitude) ||
+      !Number.isFinite(ev.observation_location.longitude)
+    ) {
+      return;
+    }
+
+    const lat = ev.observation_location.latitude;
+    const lng = ev.observation_location.longitude;
+
+    // Search for an existing cluster within maxRadiusMeters
+    let targetCluster = null;
+    for (const c of clusters) {
+      const dLat = (lat - c.latitude) * (Math.PI / 180);
+      const dLng = (lng - c.longitude) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(c.latitude * (Math.PI / 180)) *
+          Math.cos(lat * (Math.PI / 180)) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+      if (dist <= maxRadiusMeters) {
+        targetCluster = c;
+        break;
+      }
+    }
+
+    const conf = ev.confidence || 0.95;
+    const prio = ev.priority || (conf >= 0.85 ? 'HIGH PRIORITY' : 'MEDIUM PRIORITY');
+
+    if (targetCluster) {
+      targetCluster.events.push(ev);
+      targetCluster.count += 1;
+      targetCluster.maxConfidence = Math.max(targetCluster.maxConfidence, conf);
+      if (prio === 'HIGH PRIORITY' || targetCluster.priority === 'HIGH PRIORITY') {
+        targetCluster.priority = 'HIGH PRIORITY';
+      }
+      // Recompute weighted centroid for accurate spatial representation
+      targetCluster.latitude =
+        (targetCluster.latitude * (targetCluster.count - 1) + lat) / targetCluster.count;
+      targetCluster.longitude =
+        (targetCluster.longitude * (targetCluster.count - 1) + lng) / targetCluster.count;
+      targetCluster.latestTimestamp = ev.timestamp || targetCluster.latestTimestamp;
+    } else {
+      clusters.push({
+        clusterId: `cluster-${ev.event_id || Math.random()}`,
+        className: ev.class || 'person',
+        displayName: ev.display_name || 'PERSON',
+        latitude: lat,
+        longitude: lng,
+        maxConfidence: conf,
+        priority: prio,
+        count: 1,
+        latestTimestamp: ev.timestamp || new Date().toISOString(),
+        events: [ev]
+      });
+    }
+  });
+
+  return clusters;
+}
+
+// 3. Consolidated Person Target Cluster Marker
+const createPersonObservationIcon = (cluster) => {
+  const confPct = Math.round((cluster.maxConfidence || 0.95) * 100);
+  const priority = cluster.priority || 'HIGH PRIORITY';
+  const prioShort = priority.includes('HIGH') ? 'HIGH' : 'MED';
+  const color = priority.includes('HIGH') ? '#70EB78' : '#F5A623';
+  const count = cluster.count || 1;
+  const countLabel = count > 1 ? ` (${count}x)` : '';
 
   return L.divIcon({
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
-        <div style="background: #0B0E0F; border: 1px solid ${color}; color: ${color}; font-family: monospace; font-size: 7.5px; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 8px ${color}80;">
-          🎯 PERSON • ${confPct}% [${priority}]
+        <!-- Cluster Header Callout Badge -->
+        <div style="background: #0B0E0F; border: 1.5px solid ${color}; color: ${color}; font-family: monospace; font-size: 8px; font-weight: 700; padding: 1.5px 6px; border-radius: 4px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 0 10px ${color}80; letter-spacing: 0.3px;">
+          🎯 ${cluster.displayName || 'PERSON'}${countLabel} • ${confPct}% [${prioShort}]
         </div>
-        <div style="width: 26px; height: 26px; border-radius: 50%; background: rgba(112, 235, 120, 0.25); border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px ${color};">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="${color}">
+        <!-- Pulsing Center Pin with Hit Badge -->
+        <div style="position: relative; width: 28px; height: 28px; border-radius: 50%; background: rgba(112, 235, 120, 0.2); border: 2px solid ${color}; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 14px ${color};">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="${color}">
             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
           </svg>
+          ${count > 1 ? `
+            <div style="position: absolute; top: -5px; right: -7px; background: ${color}; color: #07090A; font-family: monospace; font-size: 8.5px; font-weight: 900; padding: 0.5px 4.5px; border-radius: 9999px; border: 1px solid #0B0E0F; box-shadow: 0 0 6px ${color};">
+              ${count}
+            </div>
+          ` : ''}
         </div>
       </div>
     `,
     className: 'aeris-person-obs-icon',
-    iconSize: [110, 48],
-    iconAnchor: [55, 30],
-    popupAnchor: [0, -30]
+    iconSize: [140, 52],
+    iconAnchor: [70, 34],
+    popupAnchor: [0, -34]
   });
 };
 
-// 3. Map Pan Controller (Smoothly Centers on First Telemetry Fix & Handles Recenter Button)
+// 4. Map Pan Controller (Smoothly Centers on First Telemetry Fix & Handles Recenter Button)
 function MapController({ targetCenter, hasValidGps, shouldRecenter, onRecenterDone }) {
   const map = useMap();
   const hasInitialCenteredRef = useRef(false);
@@ -135,6 +216,9 @@ export default function LiveDisasterMap({
             Number.isFinite(ev.observation_location.longitude)
   );
 
+  // Spatially cluster observations within 25 meters to prevent map clutter
+  const observationClusters = clusterObservations(personObservations, 25);
+
   return (
     <div className="w-full h-full aeris-panel-container flex flex-col overflow-hidden relative select-none">
       {/* 1. Top Minimal Map Header Bar */}
@@ -149,7 +233,7 @@ export default function LiveDisasterMap({
           </span>
         </div>
 
-        {/* Minimal Layer Toggles: [ FLIGHT PATH ] [ HEAT MAP ] [ OBSERVATIONS ] */}
+        {/* Minimal Layer Toggles: [ FLIGHT PATH ] [ HEAT MAP ] [ TARGET ZONES ] */}
         <div className="flex items-center space-x-1 text-[9.5px] font-mono">
           <button
             onClick={() => setShowRoute(!showRoute)}
@@ -181,7 +265,7 @@ export default function LiveDisasterMap({
                 : 'bg-aeris-surface border-aeris-border text-aeris-textMuted'
             }`}
           >
-            OBSERVATIONS ({personObservations.length})
+            TARGET ZONES ({observationClusters.length})
           </button>
         </div>
       </div>
@@ -259,28 +343,56 @@ export default function LiveDisasterMap({
             </Circle>
           ))}
 
-          {/* 5. Real YOLO Person Observation Markers (Recorded at drone flight coordinates) */}
-          {showDetections && personObservations.map((obs, idx) => (
+          {/* 5. Clean Consolidated Spatial Target Cluster Markers */}
+          {showDetections && observationClusters.map((cluster) => (
             <Marker
-              key={obs.event_id || `obs-${idx}`}
-              position={[obs.observation_location.latitude, obs.observation_location.longitude]}
-              icon={createPersonObservationIcon(obs)}
+              key={cluster.clusterId}
+              position={[cluster.latitude, cluster.longitude]}
+              icon={createPersonObservationIcon(cluster)}
             >
               <Popup>
-                <div className="font-sans text-xs p-1 max-w-[260px] text-[#F2F4F3]">
+                <div className="font-sans text-xs p-1 max-w-[280px] text-[#F2F4F3]">
                   <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5">
-                    <span className="font-bold text-aeris-green text-[12px] font-mono">🎯 PERSON OBSERVATION</span>
+                    <span className="font-bold text-aeris-green text-[12px] font-mono">🎯 TARGET ZONE: PERSON</span>
                     <span className="bg-aeris-green/20 text-aeris-green text-[9.5px] font-mono px-1.5 py-0.2 rounded font-bold border border-aeris-green/30">
-                      {obs.priority || 'HIGH PRIORITY'}
+                      {cluster.priority}
                     </span>
                   </div>
+
                   <div className="space-y-1 text-[11px] font-sans">
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Confidence:</span><strong className="text-aeris-green font-mono">{Math.round((obs.confidence || 0.95) * 100)}%</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Drone Position:</span><strong className="text-[#F2F4F3] font-mono">{obs.observation_location.latitude.toFixed(5)}, {obs.observation_location.longitude.toFixed(5)}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Altitude:</span><strong className="text-[#F2F4F3] font-mono">{obs.observation_location.altitude || missionState.altitude || '42.5m'}</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Source:</span><strong className="text-aeris-cyan font-mono">PX4 SIMULATOR</strong></p>
-                    <p className="flex justify-between"><span className="text-[#8C9492]">Timestamp:</span><strong className="text-[#F2F4F3] font-mono">{new Date(obs.timestamp).toLocaleTimeString()}</strong></p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Total Sightings:</span>
+                      <strong className="text-aeris-green font-mono">{cluster.count} Confirmed Hit{cluster.count > 1 ? 's' : ''}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Max AI Confidence:</span>
+                      <strong className="text-aeris-cyan font-mono">{Math.round(cluster.maxConfidence * 100)}%</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Cluster Centroid:</span>
+                      <strong className="text-[#F2F4F3] font-mono">{cluster.latitude.toFixed(5)}, {cluster.longitude.toFixed(5)}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-[#8C9492]">Latest Sighting:</span>
+                      <strong className="text-[#F2F4F3] font-mono">{new Date(cluster.latestTimestamp).toLocaleTimeString()}</strong>
+                    </p>
                   </div>
+
+                  {/* Expandable list of recent sightings in this cluster */}
+                  {cluster.count > 1 && (
+                    <div className="mt-2 pt-1 border-t border-white/10">
+                      <span className="text-[9px] font-mono text-aeris-textMuted uppercase block mb-1">Recent Sightings Log:</span>
+                      <div className="max-h-24 overflow-y-auto space-y-0.5 text-[9.5px] font-mono pr-1">
+                        {cluster.events.slice(0, 5).map((ev, i) => (
+                          <div key={i} className="flex justify-between text-[#8C9492] bg-white/5 px-1 py-0.5 rounded">
+                            <span>Hit #{cluster.events.length - i}</span>
+                            <span className="text-aeris-green">{Math.round((ev.confidence || 0.95) * 100)}%</span>
+                            <span>{new Date(ev.timestamp).toLocaleTimeString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </Popup>
             </Marker>

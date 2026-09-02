@@ -105,7 +105,7 @@ class DetectionService:
         # In-memory detection event history (Max 100 events)
         self.event_history = deque(maxlen=100)
         self.event_cooldowns = {} # {cls_name: {"time": float, "confidence": float}}
-        self.cooldown_seconds = 2.0
+        self.cooldown_seconds = 5.0
         
         # Callback for WebSocket broadcasts
         self.event_callback = None
