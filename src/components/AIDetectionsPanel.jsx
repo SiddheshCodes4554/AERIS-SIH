@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { BrainCircuit, AlertTriangle, Users, Flame, Waves, Radio, ShieldCheck, Target, Crosshair, MapPin, Cpu, ShieldAlert, Wind } from 'lucide-react';
 
+const getBackendUrl = () => {
+  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    return `http://${window.location.hostname}:8000`;
+  }
+  return 'http://10.10.8.241:8000';
+};
+
 export default function AIDetectionsPanel({ onDetectionsUpdate }) {
   const [liveDetections, setLiveDetections] = useState([]);
   const [eventHistory, setEventHistory] = useState([]);
@@ -14,7 +22,7 @@ export default function AIDetectionsPanel({ onDetectionsUpdate }) {
     }
   });
 
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const backendUrl = getBackendUrl();
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
 
   useEffect(() => {
@@ -104,7 +112,6 @@ export default function AIDetectionsPanel({ onDetectionsUpdate }) {
   }, [backendUrl, wsUrl, onDetectionsUpdate]);
 
   const hazardStatus = summary.hazard_status || 'NORMAL';
-  const fireStatus = summary.fire_status || 'NO_FIRE';
 
   return (
     <div className="w-full h-full aeris-panel-container p-2.5 flex flex-col justify-between select-none font-sans overflow-hidden">

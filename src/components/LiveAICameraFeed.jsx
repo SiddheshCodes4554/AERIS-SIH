@@ -21,14 +21,21 @@ import {
   Wind
 } from 'lucide-react';
 
+const getBackendUrl = () => {
+  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    return `http://${window.location.hostname}:8000`;
+  }
+  return 'http://10.10.8.241:8000';
+};
+
 export default function LiveAICameraFeed({ missionState }) {
   const [feedMode, setFeedMode] = useState('AI_OVERLAY'); // 'RGB' | 'THERMAL' | 'AI_OVERLAY'
   const [isRecording, setIsRecording] = useState(true);
   const [cameraStatus, setCameraStatus] = useState('LIVE'); // 'LIVE' | 'STANDBY'
   const [devices, setDevices] = useState([
     { index: 1, name: '🎥 OBS Virtual Camera / Phone Link (CAM-1)' },
-    { index: 0, name: '📷 Primary Laptop Webcam (CAM-0)' },
-    { index: 2, name: '🎥 OBS Virtual Camera / USB (CAM-2)' }
+    { index: 0, name: '📷 Primary Laptop Webcam (CAM-0)' }
   ]);
   const [selectedCameraIndex, setSelectedCameraIndex] = useState(1);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -52,12 +59,12 @@ export default function LiveAICameraFeed({ missionState }) {
   const [targetFilter, setTargetFilter] = useState('ALL');
   const [confThreshold, setConfThreshold] = useState(45);
 
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const backendUrl = getBackendUrl();
   
   const streamEndpoint = feedMode === 'RGB' ? '/api/video/feed' : '/api/video/detection-feed';
   const videoFeedUrl = `${backendUrl}${streamEndpoint}?t=${streamKey}`;
 
-  // 1. Fetch available camera devices (Integrated Webcam, Phone Link, OBS Virtual Camera)
+  // 1. Fetch available camera devices
   const fetchDevices = async () => {
     try {
       const res = await fetch(`${backendUrl}/api/camera/devices`, { mode: 'cors' });
@@ -115,7 +122,7 @@ export default function LiveAICameraFeed({ missionState }) {
     };
   }, [backendUrl, streamKey]);
 
-  // 3. Dynamic Camera Switch (Seamlessly switches to OBS Virtual Camera)
+  // 3. Dynamic Camera Switch
   const handleSelectCamera = async (newIndex) => {
     const idx = parseInt(newIndex, 10);
     setSelectedCameraIndex(idx);
@@ -241,7 +248,7 @@ export default function LiveAICameraFeed({ missionState }) {
           {/* 2. Top Control Strips: Mode, Camera Device Selector & Quick OBS Switch */}
           <div className="space-y-1.5 mb-2">
             <div className="flex items-center space-x-1.5">
-              {/* Mode Switcher Tabs: [ RGB ] [ THERMAL ] [ AI OVERLAY ] */}
+              {/* Mode Switcher Tabs */}
               <div className="flex-1 flex space-x-0.5 p-0.5 bg-aeris-surface rounded-card border border-aeris-border text-[9px] font-mono">
                 {[
                   { id: 'RGB', label: 'RGB' },
@@ -262,9 +269,9 @@ export default function LiveAICameraFeed({ missionState }) {
                 ))}
               </div>
 
-              {/* Dedicated OBS Virtual Camera Quick Switch Button */}
+              {/* Dedicated OBS Quick Switch Button */}
               <button
-                onClick={() => handleSelectCamera(selectedCameraIndex === 1 ? 2 : 1)}
+                onClick={() => handleSelectCamera(selectedCameraIndex === 1 ? 0 : 1)}
                 className={`px-2 py-1 rounded text-[8.5px] font-mono font-bold transition-all flex items-center shrink-0 border ${
                   isObsCam 
                     ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-[0_0_8px_rgba(245,166,35,0.3)]' 
@@ -358,6 +365,9 @@ export default function LiveAICameraFeed({ missionState }) {
               src={videoFeedUrl}
               alt="AERIS Multi-Hazard Video Stream"
               crossOrigin="anonymous"
+              onError={() => {
+                setTimeout(() => setStreamKey(Date.now()), 2000);
+              }}
               className={`w-full h-full object-contain transition-all duration-200 ${
                 feedMode === 'THERMAL'
                   ? 'contrast-150 saturate-200 hue-rotate-[180deg] filter invert-[0.15]'
