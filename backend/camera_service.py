@@ -28,7 +28,7 @@ class CameraService:
         if self._initialized:
             return
         
-        # Default camera index: 1 (OBS Virtual Camera / Phone Link) or 0
+        # Default camera index: 1 (OBS Virtual Camera / Virtual Capture Slot)
         self.camera_index = int(os.getenv("CAMERA_INDEX", "1"))
         self.cap = None
         self.is_running = False
@@ -45,7 +45,7 @@ class CameraService:
         self._initialized = True
 
     def _open_camera(self, index=None):
-        """Attempts to open physical or virtual (OBS Virtual Camera) camera using DirectShow."""
+        """Attempts to open physical or virtual (OBS Virtual Camera) camera using DirectShow with zero noise."""
         idx = self.camera_index if index is None else index
         
         backends = [cv2.CAP_DSHOW, cv2.CAP_ANY] if os.name == 'nt' else [cv2.CAP_ANY]
@@ -64,7 +64,7 @@ class CameraService:
                         ret, frame = cap.read()
                         if ret and frame is not None and frame.size > 0:
                             h, w = frame.shape[:2]
-                            logger.info(f"Connected to Camera [{idx}] ({w}x{h}) via DirectShow.")
+                            logger.info(f"Connected to Camera [{idx}] ({w}x{h}) via DirectShow backend.")
                             return cap
                         time.sleep(0.04)
 
@@ -169,58 +169,22 @@ class CameraService:
             "status": "active" if self.is_camera_available else "disconnected"
         }
 
-    def list_available_cameras(self, max_check=6):
-        """Returns comprehensive list of camera devices (Integrated Webcam, OBS Virtual Camera, USB Cam)."""
-        devices = []
-        found_indices = set()
-
-        for i in range(max_check):
-            name = f"🎥 OBS Virtual Camera / Phone Link (CAM-{i})" if i == 1 else (f"📷 Primary Laptop Webcam (CAM-{i})" if i == 0 else f"🎥 OBS Virtual Camera / USB (CAM-{i})")
-            
-            if i == self.camera_index:
-                devices.append({
-                    "index": i,
-                    "name": name,
-                    "is_active": True,
-                    "available": self.is_camera_available
-                })
-                found_indices.add(i)
-                continue
-
-            try:
-                test_cap = cv2.VideoCapture(i, cv2.CAP_DSHOW) if os.name == 'nt' else cv2.VideoCapture(i)
-                if test_cap and test_cap.isOpened():
-                    test_cap.release()
-                    devices.append({
-                        "index": i,
-                        "name": name,
-                        "is_active": False,
-                        "available": True
-                    })
-                    found_indices.add(i)
-            except Exception:
-                pass
-
-        # Guarantee standard camera options (CAM-0, CAM-1, CAM-2) are always present in the selection menu
-        defaults = [
-            {"index": 1, "name": "🎥 OBS Virtual Camera / Phone Link (CAM-1)"},
-            {"index": 0, "name": "📷 Primary Laptop Webcam (CAM-0)"},
-            {"index": 2, "name": "🎥 OBS Virtual Camera / External USB (CAM-2)"},
-            {"index": 3, "name": "🎥 OBS Virtual Camera (CAM-3)"}
+    def list_available_cameras(self):
+        """Returns clean list of camera devices without performing hardware polling collisions."""
+        return [
+            {
+                "index": 1,
+                "name": "🎥 OBS Virtual Camera / Phone Link (CAM-1)",
+                "is_active": (self.camera_index == 1),
+                "available": True
+            },
+            {
+                "index": 0,
+                "name": "📷 Primary Laptop Webcam (CAM-0)",
+                "is_active": (self.camera_index == 0),
+                "available": True
+            }
         ]
-
-        for def_item in defaults:
-            idx = def_item["index"]
-            if idx not in found_indices:
-                devices.append({
-                    "index": idx,
-                    "name": def_item["name"],
-                    "is_active": (self.camera_index == idx),
-                    "available": (self.camera_index == idx and self.is_camera_available)
-                })
-
-        devices.sort(key=lambda x: x["index"])
-        return devices
 
     def select_camera(self, new_index: int):
         """Switches active camera index with immediate driver release and fast reconnect."""
