@@ -38,14 +38,8 @@ export default function App() {
   const [detectionEvents, setDetectionEvents] = useState([]);
   const [locationPath, setLocationPath] = useState([]);
 
-  const getBackendUrl = () => {
-    if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
-    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
-      return `http://${window.location.hostname}:8000`;
-    }
-    return 'http://10.10.8.241:8000';
-  };
-  const backendUrl = getBackendUrl();
+  const activeZone = DISASTER_ZONES.find(z => z.id === selectedZoneId) || DISASTER_ZONES[0];
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://10.10.8.241:8000';
   const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws/live';
 
   // 1. Centralized Authoritative Drone Position (Derived strictly from PX4/Gazebo Location Pipeline)
