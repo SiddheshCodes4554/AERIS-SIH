@@ -14,12 +14,16 @@ load_dotenv()
 logger = logging.getLogger("aeris.detection")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Priority Disaster & Tactical Search Classes with Dedicated Badges
+# Priority Disaster & Tactical Search Classes with Dedicated Badges & Colors (BGR format for OpenCV)
 SEARCH_CLASSES = {
     # 1. Survivors / Humans
     "person": {"display": "🎯 PERSON", "category": "HUMAN", "color": (112, 235, 120)}, # Neon Green
     
-    # 2. Vehicles / Transports
+    # 2. Multi-Hazard Primary Targets (Real Fire & Smoke Model)
+    "fire": {"display": "🔥 FIRE", "category": "HAZARD", "color": (30, 45, 255)},      # Bright Red/Orange
+    "smoke": {"display": "💨 SMOKE", "category": "HAZARD", "color": (220, 200, 100)},    # Slate Cyan
+    
+    # 3. Vehicles / Transports
     "car": {"display": "🚗 CAR", "category": "VEHICLE", "color": (35, 175, 255)},     # Amber
     "truck": {"display": "🚚 TRUCK", "category": "VEHICLE", "color": (35, 175, 255)},
     "bus": {"display": "🚌 BUS", "category": "VEHICLE", "color": (35, 175, 255)},
@@ -28,7 +32,7 @@ SEARCH_CLASSES = {
     "boat": {"display": "🚤 BOAT", "category": "VEHICLE", "color": (35, 175, 255)},
     "airplane": {"display": "✈️ AIRCRAFT", "category": "VEHICLE", "color": (35, 175, 255)},
     
-    # 3. Gear / Equipment
+    # 4. Gear / Equipment
     "backpack": {"display": "🎒 BACKPACK", "category": "GEAR", "color": (235, 160, 50)}, # Cyan
     "handbag": {"display": "👜 HANDBAG", "category": "GEAR", "color": (235, 160, 50)},
     "suitcase": {"display": "🧳 SUITCASE", "category": "GEAR", "color": (235, 160, 50)},
@@ -36,16 +40,16 @@ SEARCH_CLASSES = {
     "laptop": {"display": "💻 LAPTOP", "category": "GEAR", "color": (235, 160, 50)},
     "bottle": {"display": "🍾 BOTTLE", "category": "GEAR", "color": (235, 160, 50)},
     
-    # 4. Animals / Rescue Dogs / Hazards
-    "dog": {"display": "🐕 K9 RESCUE", "category": "ANIMAL", "color": (234, 94, 165)},   # Purple/Pink
+    # 5. Animals / Rescue Dogs / Hydrants
+    "dog": {"display": "🐕 K9 RESCUE", "category": "ANIMAL", "color": (234, 94, 165)},
     "cat": {"display": "🐈 ANIMAL", "category": "ANIMAL", "color": (234, 94, 165)},
-    "fire hydrant": {"display": "🧯 HYDRANT", "category": "HAZARD", "color": (61, 77, 255)}, # Red
+    "fire hydrant": {"display": "🧯 HYDRANT", "category": "HAZARD", "color": (61, 77, 255)},
 }
 
 AVAILABLE_MODELS = {
-    "yolov8s.pt": "YOLOv8-Small (High Precision • Recommended)",
-    "yolov8m.pt": "YOLOv8-Medium (Competition Ultra-Precision)",
-    "yolov8n.pt": "YOLOv8-Nano (Ultra Fast)"
+    "yolov8s.pt": "YOLOv8-Small (Object / Person Detection)",
+    "yolov8m.pt": "YOLOv8-Medium (Competition Object Model)",
+    "models/fire_smoke_yolov8n.pt": "YOLOv8-Fire & Smoke (Real Trained Multi-Hazard Model)"
 }
 
 class DetectionService:
@@ -63,31 +67,43 @@ class DetectionService:
         if self._initialized:
             return
         
-        # Default to High-Precision YOLOv8-Small for Competition Accuracy
-        self.model_name = os.getenv("YOLO_MODEL", "yolov8s.pt")
-        self.confidence_threshold = float(os.getenv("YOLO_CONFIDENCE", "0.58")) # Clean false-positive rejection
+        # Dual Model Configuration
+        self.object_model_name = os.getenv("YOLO_MODEL", "yolov8s.pt")
+        self.fire_model_path = os.getenv("FIRE_MODEL", os.path.join(os.getcwd(), "models", "fire_smoke_yolov8n.pt"))
+        
+        self.confidence_threshold = float(os.getenv("YOLO_CONFIDENCE", "0.45"))
+        self.fire_confidence_threshold = float(os.getenv("FIRE_CONFIDENCE", "0.40"))
         self.iou_threshold = float(os.getenv("YOLO_IOU", "0.50"))
         self.img_size = int(os.getenv("YOLO_IMG_SIZE", "640"))
-        self.target_filter = "ALL" # "ALL" | "HUMAN_ONLY" | "VEHICLES" | "GEAR"
+        self.target_filter = "ALL" # "ALL" | "HUMAN_ONLY" | "VEHICLES" | "GEAR" | "HAZARDS"
         
-        self.model = None
+        # Models and Model Statuses
+        self.object_model = None
+        self.fire_model = None
+        self.object_model_status = "OFFLINE"
+        self.fire_model_status = "OFFLINE"
+        self.supported_fire_classes = ["smoke", "fire"]
+        
         self.device = "cpu"
         self.is_running = False
-        self.is_model_loaded = False
         
         # Performance metrics
         self.inference_fps = 0.0
         self.inference_time_ms = 0.0
         self.total_frames_processed = 0
         
+        # Temporal Validation for Fire (FIRE_SUSPECTED -> FIRE_CONFIRMED)
+        self.fire_consecutive_frames = 0
+        self.fire_confirmation_threshold = 3
+        
         # Spatial-Temporal Bounding Box Smoothing & Persistence Trackers
-        self.box_smoothing_cache = {} # {cls_name: [x1, y1, x2, y2]}
-        self.frame_hit_tracker = {}   # {cls_name: hit_count}
+        self.box_smoothing_cache = {}
+        self.frame_hit_tracker = {}
         
         # Thread synchronization & output storage
         self.data_lock = threading.Lock()
         
-        # Pre-initialize standby frame so stream never hangs on startup
+        # Pre-initialize standby frame
         standby_init = np.zeros((720, 1280, 3), dtype=np.uint8)
         standby_init[:] = (11, 14, 15)
         ret_init, jpeg_init = cv2.imencode('.jpg', standby_init, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
@@ -98,14 +114,21 @@ class DetectionService:
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "total_detections": 0,
             "detections": [],
+            "summary": {
+                "persons": 0,
+                "fire": 0,
+                "smoke": 0,
+                "hazard_status": "NORMAL",
+                "fire_status": "NO_FIRE"
+            },
             "inference_fps": 0.0,
             "inference_time_ms": 0.0
         }
         
         # In-memory detection event history (Max 100 events)
         self.event_history = deque(maxlen=100)
-        self.event_cooldowns = {} # {cls_name: {"time": float, "confidence": float}}
-        self.cooldown_seconds = 5.0
+        self.event_cooldowns = {}
+        self.cooldown_seconds = 4.0
         
         # Callback for WebSocket broadcasts
         self.event_callback = None
@@ -114,55 +137,59 @@ class DetectionService:
         self.thread = None
         self._initialized = True
 
-    def _init_model(self, model_to_load=None):
-        """Loads Ultralytics YOLO model once and warms it up."""
-        target_model = model_to_load or self.model_name
+    def _init_models(self):
+        """Loads both Object Model A and Fire Model B ONCE during initialization."""
+        import torch
+        from ultralytics import YOLO
+
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Initializing AERIS Multi-Hazard Vision Pipeline on device: {self.device.upper()}...")
+
+        # 1. Load Object Detection Model (Model A)
         try:
-            import torch
-            from ultralytics import YOLO
-            
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info(f"Loading High-Accuracy YOLO Model '{target_model}' on device: {self.device.upper()}...")
-            
-            new_model = YOLO(target_model)
-            new_model.to(self.device)
-            
-            # Warm up model with a dummy frame
+            logger.info(f"Loading Primary Object Model '{self.object_model_name}'...")
+            obj_m = YOLO(self.object_model_name)
+            obj_m.to(self.device)
             dummy_frame = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
-            new_model.predict(
-                source=dummy_frame, 
-                conf=self.confidence_threshold, 
-                iou=self.iou_threshold, 
-                imgsz=self.img_size, 
-                verbose=False
-            )
-            
-            self.model = new_model
-            self.model_name = target_model
-            self.is_model_loaded = True
-            logger.info(f"YOLO Model '{self.model_name}' loaded successfully with competition-grade accuracy.")
+            obj_m.predict(source=dummy_frame, conf=self.confidence_threshold, imgsz=self.img_size, verbose=False)
+            self.object_model = obj_m
+            self.object_model_status = "ACTIVE"
+            logger.info(f"Primary Object Model '{self.object_model_name}' loaded successfully.")
         except Exception as e:
-            logger.error(f"Failed to load YOLO model '{target_model}': {e}")
-            self.is_model_loaded = False
+            logger.error(f"Failed loading Primary Object Model '{self.object_model_name}': {e}")
+            self.object_model_status = "OFFLINE"
 
-    def set_config(self, model_name: str = None, confidence: float = None, target_filter: str = None):
-        """Dynamically switches YOLO model, confidence threshold, or filter mode."""
-        with self.data_lock:
-            if confidence is not None:
-                self.confidence_threshold = max(0.20, min(0.95, float(confidence)))
-                logger.info(f"Updated confidence threshold to: {self.confidence_threshold:.2f}")
-            
-            if target_filter is not None:
-                self.target_filter = target_filter
-                logger.info(f"Updated target filter mode to: {self.target_filter}")
-            
-            if model_name and model_name in AVAILABLE_MODELS and model_name != self.model_name:
-                self._init_model(model_name)
+        # 2. Load Dedicated Fire Detection Model (Model B)
+        try:
+            if not os.path.exists(self.fire_model_path):
+                # Attempt to download real fire_smoke_yolov8n.pt from HuggingFace
+                from huggingface_hub import hf_hub_download
+                logger.info(f"Downloading real trained Fire/Smoke YOLO model from HuggingFace (rabahdev/fire-smoke-yolov8n)...")
+                downloaded_path = hf_hub_download(repo_id="rabahdev/fire-smoke-yolov8n", filename="best.pt")
+                os.makedirs(os.path.dirname(self.fire_model_path), exist_ok=True)
+                with open(downloaded_path, 'rb') as fin, open(self.fire_model_path, 'wb') as fout:
+                    fout.write(fin.read())
 
-        return self.get_status()
+            if os.path.exists(self.fire_model_path):
+                logger.info(f"Loading Fire & Smoke Detection Model from '{self.fire_model_path}'...")
+                fire_m = YOLO(self.fire_model_path)
+                fire_m.to(self.device)
+                dummy_frame = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
+                fire_m.predict(source=dummy_frame, conf=self.fire_confidence_threshold, imgsz=self.img_size, verbose=False)
+                self.fire_model = fire_m
+                self.fire_model_status = "ACTIVE"
+                if hasattr(fire_m, 'names') and fire_m.names:
+                    self.supported_fire_classes = list(fire_m.names.values())
+                logger.info(f"Fire & Smoke Model loaded successfully with supported classes: {self.supported_fire_classes}")
+            else:
+                logger.warning("Fire model file path not found. Fire detection will remain OFFLINE.")
+                self.fire_model_status = "OFFLINE"
+        except Exception as e:
+            logger.error(f"Failed loading Fire Detection Model: {e}")
+            self.fire_model_status = "OFFLINE"
 
-    def _smooth_box(self, cls_name, raw_box, alpha=0.72):
-        """Applies Exponential Moving Average smoothing to eliminate frame-to-frame box jitter."""
+    def _smooth_box(self, cls_name, raw_box, alpha=0.70):
+        """Applies Exponential Moving Average smoothing to eliminate box jitter."""
         if cls_name not in self.box_smoothing_cache:
             self.box_smoothing_cache[cls_name] = [float(v) for v in raw_box]
             return [int(v) for v in raw_box]
@@ -176,230 +203,329 @@ class DetectionService:
         return [int(v) for v in smoothed]
 
     def _draw_tactical_box(self, img, box, cls_name, conf, info):
-        """Draws prominent, high-contrast tactical HUD bounding box with large confidence badge."""
+        """Draws high-visibility tactical HUD bounding box with distinct color per hazard/class."""
         x1, y1, x2, y2 = [int(v) for v in box]
         h_img, w_img = img.shape[:2]
         
-        # Clamp coordinates tightly within frame with margin
         x1, y1 = max(4, x1), max(4, y1)
         x2, y2 = min(w_img - 4, x2), min(h_img - 4, y2)
         
         bw = x2 - x1
         bh = y2 - y1
-        
-        # Prevent huge edge-to-edge box when standing close
-        if bw > 0.88 * w_img:
-            margin_x = int(bw * 0.08)
-            x1 += margin_x
-            x2 -= margin_x
-            bw = x2 - x1
-
-        if bh > 0.88 * h_img:
-            margin_y = int(bh * 0.06)
-            y1 += margin_y
-            y2 -= margin_y
-            bh = y2 - y1
 
         color = info.get("color", (112, 235, 120))
         glow_color = (color[0] // 4, color[1] // 4, color[2] // 4)
         
-        # 1. Subtle bounding box border outline
+        # Box rectangle
         cv2.rectangle(img, (x1, y1), (x2, y2), glow_color, 2, cv2.LINE_AA)
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 1, cv2.LINE_AA)
         
-        # 2. Prominent tactical corner reticle brackets (4px thick, length 30px)
-        corner_len = max(16, min(34, bw // 4, bh // 4))
-        thick = 4
+        # Corner brackets
+        corner_len = max(14, min(30, bw // 4, bh // 4))
+        thick = 3
         
-        # Top-Left Corner
         cv2.line(img, (x1, y1), (x1 + corner_len, y1), color, thick)
         cv2.line(img, (x1, y1), (x1, y1 + corner_len), color, thick)
-        # Top-Right Corner
         cv2.line(img, (x2, y1), (x2 - corner_len, y1), color, thick)
         cv2.line(img, (x2, y1), (x2, y1 + corner_len), color, thick)
-        # Bottom-Left Corner
         cv2.line(img, (x1, y2), (x1 + corner_len, y2), color, thick)
         cv2.line(img, (x1, y2), (x1, y2 - corner_len), color, thick)
-        # Bottom-Right Corner
         cv2.line(img, (x2, y2), (x2 - corner_len, y2), color, thick)
         cv2.line(img, (x2, y2), (x2, y2 - corner_len), color, thick)
         
-        # 3. Target Center Crosshair Reticle
+        # Center Reticle
         cx = (x1 + x2) // 2
         cy = (y1 + y2) // 2
-        ch_len = 10
-        cv2.line(img, (cx - ch_len, cy), (cx + ch_len, cy), color, 1, cv2.LINE_AA)
-        cv2.line(img, (cx, cy - ch_len), (cx, cy + ch_len), color, 1, cv2.LINE_AA)
         cv2.circle(img, (cx, cy), 3, color, -1, cv2.LINE_AA)
         
-        # 4. LARGE & CLEAR Tactical Header Badge (Font scale 0.85, Thick text, High Contrast)
+        # Header Badge
         conf_pct = conf * 100.0
         display_label = info.get("display", cls_name.upper())
         label_text = f" {display_label} [ {conf_pct:.1f}% ] "
         
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.80
+        font_scale = 0.75
         font_thick = 2
         
         (tw, th), baseline = cv2.getTextSize(label_text, font, font_scale, font_thick)
         
-        # Position badge above box if space permits, otherwise top-inside box
-        if y1 - th - 18 > 10:
+        if y1 - th - 14 > 5:
             badge_y2 = y1 - 4
-            badge_y1 = badge_y2 - th - 14
+            badge_y1 = badge_y2 - th - 10
         else:
-            badge_y1 = y1 + 6
-            badge_y2 = badge_y1 + th + 14
+            badge_y1 = y1 + 4
+            badge_y2 = badge_y1 + th + 10
             
         badge_x1 = x1
-        badge_x2 = min(w_img - 6, x1 + tw + 16)
+        badge_x2 = min(w_img - 4, x1 + tw + 12)
         
-        # Solid matte black badge background
         cv2.rectangle(img, (badge_x1, badge_y1), (badge_x2, badge_y2), (7, 10, 12), -1)
-        # Bright neon tactical double border
         cv2.rectangle(img, (badge_x1, badge_y1), (badge_x2, badge_y2), color, 2)
         
-        # Large Crisp Text with Black Drop Shadow
-        text_origin = (badge_x1 + 8, badge_y2 - 8)
-        cv2.putText(img, label_text, text_origin, font, font_scale, (0, 0, 0), font_thick + 3, cv2.LINE_AA)
+        text_origin = (badge_x1 + 6, badge_y2 - 6)
+        cv2.putText(img, label_text, text_origin, font, font_scale, (0, 0, 0), font_thick + 2, cv2.LINE_AA)
         cv2.putText(img, label_text, text_origin, font, font_scale, color, font_thick, cv2.LINE_AA)
 
-    def _process_detections(self, frame, results):
-        """Extracts genuine YOLO detections, applies 2-frame persistence, prints logs, and annotates frame."""
+    def _process_frame(self, frame):
+        """Runs dual-model inference (Object Model + Fire Model) and fuses detections into unified response."""
         annotated_frame = frame.copy()
         current_detections = []
         now = time.time()
         
+        persons_count = 0
+        fire_count = 0
+        smoke_count = 0
         raw_detected_classes = set()
         
-        if results and len(results) > 0 and results[0].boxes is not None:
-            boxes = results[0].boxes
-            for box in boxes:
-                cls_id = int(box.cls[0].item())
-                cls_name = self.model.names.get(cls_id, "").lower()
-                conf = float(box.conf[0].item())
+        # 1. Run Model A: Object / Person Detection Model
+        if self.object_model is not None:
+            try:
+                res_obj = self.object_model.predict(
+                    source=frame,
+                    conf=self.confidence_threshold,
+                    iou=self.iou_threshold,
+                    imgsz=self.img_size,
+                    verbose=False
+                )
+                if res_obj and len(res_obj) > 0 and res_obj[0].boxes is not None:
+                    for box in res_obj[0].boxes:
+                        cls_id = int(box.cls[0].item())
+                        cls_name = self.object_model.names.get(cls_id, "").lower()
+                        conf = float(box.conf[0].item())
+
+                        if cls_name not in SEARCH_CLASSES:
+                            continue
+                        if cls_name in ["fire", "smoke"]:
+                            continue # Leave fire/smoke to dedicated fire model
+                        
+                        info = SEARCH_CLASSES[cls_name]
+                        category = info["category"]
+
+                        if self.target_filter == "HUMAN_ONLY" and category != "HUMAN":
+                            continue
+                        elif self.target_filter == "VEHICLES" and category != "VEHICLE":
+                            continue
+                        elif self.target_filter == "GEAR" and category != "GEAR":
+                            continue
+                        elif self.target_filter == "HAZARDS" and category != "HAZARD":
+                            continue
+
+                        if cls_name == "person":
+                            persons_count += 1
+                        
+                        raw_detected_classes.add(cls_name)
+                        raw_xyxy = box.xyxy[0].tolist()
+                        smoothed_xyxy = self._smooth_box(f"obj_{cls_name}", raw_xyxy)
+
+                        x1, y1, x2, y2 = smoothed_xyxy
+                        w = x2 - x1
+                        h = y2 - y1
+
+                        item = {
+                            "class": cls_name,
+                            "category": category,
+                            "display_name": info["display"],
+                            "confidence": round(conf, 2),
+                            "confidence_pct": round(conf * 100, 1),
+                            "model_source": "object_model",
+                            "bounding_box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "w": w, "h": h}
+                        }
+                        current_detections.append(item)
+                        self._draw_tactical_box(annotated_frame, smoothed_xyxy, cls_name, conf, info)
+            except Exception as e:
+                logger.error(f"Object model inference error: {e}")
+
+        # 2. Run Model B: Dedicated Fire & Smoke Detection Model
+        if self.fire_model is not None and self.fire_model_status == "ACTIVE":
+            try:
+                res_fire = self.fire_model.predict(
+                    source=frame,
+                    conf=self.fire_confidence_threshold,
+                    iou=self.iou_threshold,
+                    imgsz=self.img_size,
+                    verbose=False
+                )
+                if res_fire and len(res_fire) > 0 and res_fire[0].boxes is not None:
+                    for box in res_fire[0].boxes:
+                        cls_id = int(box.cls[0].item())
+                        raw_name = self.fire_model.names.get(cls_id, "fire").lower()
+                        conf = float(box.conf[0].item())
+
+                        # Map model label to standard class name ('fire' or 'smoke')
+                        cls_name = "smoke" if "smoke" in raw_name else "fire"
+                        
+                        info = SEARCH_CLASSES.get(cls_name, {"display": "🔥 FIRE", "category": "HAZARD", "color": (30, 45, 255)})
+                        category = "HAZARD"
+
+                        if cls_name == "fire":
+                            fire_count += 1
+                        elif cls_name == "smoke":
+                            smoke_count += 1
+
+                        raw_detected_classes.add(cls_name)
+                        raw_xyxy = box.xyxy[0].tolist()
+                        smoothed_xyxy = self._smooth_box(f"fire_{cls_name}", raw_xyxy)
+
+                        x1, y1, x2, y2 = smoothed_xyxy
+                        w = x2 - x1
+                        h = y2 - y1
+
+                        item = {
+                            "class": cls_name,
+                            "category": category,
+                            "display_name": info["display"],
+                            "confidence": round(conf, 2),
+                            "confidence_pct": round(conf * 100, 1),
+                            "model_source": "fire_model",
+                            "bounding_box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "w": w, "h": h}
+                        }
+                        current_detections.append(item)
+                        self._draw_tactical_box(annotated_frame, smoothed_xyxy, cls_name, conf, info)
+            except Exception as e:
+                logger.error(f"Fire model inference error: {e}")
+
+        # 3. Temporal Validation for Fire (NO_FIRE -> FIRE_SUSPECTED -> FIRE_CONFIRMED)
+        if fire_count > 0:
+            self.fire_consecutive_frames += 1
+        else:
+            self.fire_consecutive_frames = max(0, self.fire_consecutive_frames - 1)
+
+        if self.fire_consecutive_frames >= self.fire_confirmation_threshold:
+            fire_status = "FIRE_CONFIRMED"
+        elif self.fire_consecutive_frames > 0:
+            fire_status = "FIRE_SUSPECTED"
+        else:
+            fire_status = "NO_FIRE"
+
+        # 4. Multi-Hazard Intelligence Status Calculation
+        if persons_count > 0 and fire_status == "FIRE_CONFIRMED":
+            hazard_status = "CRITICAL"
+        elif fire_status == "FIRE_CONFIRMED":
+            hazard_status = "HIGH"
+        elif persons_count > 0:
+            hazard_status = "MEDIUM"
+        else:
+            hazard_status = "NORMAL"
+
+        # Optional Spatial Proximity Estimate (Check if person box and fire box are close on frame)
+        spatial_hazard = None
+        person_boxes = [d["bounding_box"] for d in current_detections if d["class"] == "person"]
+        fire_boxes = [d["bounding_box"] for d in current_detections if d["class"] == "fire"]
+
+        for pb in person_boxes:
+            pcx, pcy = (pb["x1"] + pb["x2"]) / 2.0, (pb["y1"] + pb["y2"]) / 2.0
+            for fb in fire_boxes:
+                fcx, fcy = (fb["x1"] + fb["x2"]) / 2.0, (fb["y1"] + fb["y2"]) / 2.0
+                dist_px = np.hypot(pcx - fcx, pcy - fcy)
+                if dist_px < 220:
+                    spatial_hazard = "PERSON NEAR FIRE HAZARD (VISUAL PROXIMITY ESTIMATE)"
+                    break
+
+        # 5. Multi-Hazard Detection Event Triggering & Drone Location Association
+        primary_trigger_cls = None
+        if persons_count > 0 and fire_count > 0:
+            primary_trigger_cls = "multi_hazard"
+        elif fire_count > 0:
+            primary_trigger_cls = "fire"
+        elif persons_count > 0:
+            primary_trigger_cls = "person"
+        elif current_detections:
+            primary_trigger_cls = current_detections[0]["class"]
+
+        if primary_trigger_cls:
+            last_event = self.event_cooldowns.get(primary_trigger_cls)
+            should_emit = False
+            if not last_event or (now - last_event["time"] > self.cooldown_seconds):
+                should_emit = True
+
+            if should_emit:
+                # Retrieve current authoritative drone GPS coordinates from LocationService
+                from location_service import location_service
+                loc_res = location_service.get_current_location()
+                obs_loc = loc_res.get("location", {}) if loc_res.get("status") == "active" else {}
+
+                drone_lat = obs_loc.get("latitude", 47.397958)
+                drone_lng = obs_loc.get("longitude", 8.546148)
+                drone_alt = obs_loc.get("altitude", 488.0)
+
+                top_conf = max([d["confidence"] for d in current_detections]) if current_detections else 0.90
                 
-                # 1. Filter out unknown/unwanted classes
-                if cls_name not in SEARCH_CLASSES:
-                    continue
-                
-                info = SEARCH_CLASSES[cls_name]
-                category = info["category"]
-                
-                # 2. Apply category filter if set by operator
-                if self.target_filter == "HUMAN_ONLY" and category != "HUMAN":
-                    continue
-                elif self.target_filter == "VEHICLES" and category != "VEHICLE":
-                    continue
-                elif self.target_filter == "GEAR" and category != "GEAR":
-                    continue
-                
-                # 3. Apply strict confidence threshold for competition-grade precision
-                if conf < self.confidence_threshold:
-                    continue
-                
-                raw_detected_classes.add(cls_name)
-                
-                # 4. Multi-Frame Persistence Filter (Requires 2 consecutive hits to prune transient noise)
-                hit_count = self.frame_hit_tracker.get(cls_name, 0) + 1
-                self.frame_hit_tracker[cls_name] = hit_count
-                
-                if hit_count < 2 and conf < 0.70:
-                    continue # Wait 1 extra frame to confirm low-confidence candidate
-                
-                raw_xyxy = box.xyxy[0].tolist()
-                smoothed_xyxy = self._smooth_box(cls_name, raw_xyxy)
-                display_name = info["display"]
-                
-                x1, y1, x2, y2 = smoothed_xyxy
-                w = x2 - x1
-                h = y2 - y1
-                
-                detection_item = {
-                    "class": cls_name,
-                    "category": category,
+                if primary_trigger_cls == "multi_hazard":
+                    display_name = "🚨 MULTI-HAZARD DETECTED (PERSON + FIRE)"
+                    priority = "CRITICAL"
+                elif primary_trigger_cls == "fire":
+                    display_name = "🔥 FIRE HAZARD DETECTED"
+                    priority = "HIGH PRIORITY"
+                elif primary_trigger_cls == "person":
+                    display_name = "👤 SURVIVOR DETECTED"
+                    priority = "MEDIUM PRIORITY"
+                else:
+                    display_name = f"🎯 {primary_trigger_cls.upper()} DETECTED"
+                    priority = "MEDIUM PRIORITY"
+
+                event_id = f"det_{int(now * 1000)}"
+                event_payload = {
+                    "event_id": event_id,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "class": primary_trigger_cls,
+                    "category": "HAZARD" if "fire" in primary_trigger_cls or "hazard" in primary_trigger_cls else "HUMAN",
                     "display_name": display_name,
-                    "confidence": round(conf, 2),
-                    "confidence_pct": round(conf * 100, 1),
-                    "bounding_box": {
-                        "x1": x1,
-                        "y1": y1,
-                        "x2": x2,
-                        "y2": y2,
-                        "w": w,
-                        "h": h
-                    }
-                }
-                current_detections.append(detection_item)
-                
-                # Draw high-visibility tactical HUD bounding box
-                self._draw_tactical_box(annotated_frame, smoothed_xyxy, cls_name, conf, info)
-                
-                # Terminal Console Logging & Event Emission
-                last_event = self.event_cooldowns.get(cls_name)
-                should_emit = False
-                if not last_event or (now - last_event["time"] > self.cooldown_seconds):
-                    should_emit = True
-                elif conf > (last_event["confidence"] + 0.10):
-                    should_emit = True
-                
-                if should_emit:
-                    # Retrieve current drone telemetry location context from TelemetryService
-                    from telemetry_service import telemetry_service
-                    telem = telemetry_service.get_telemetry()
-
-                    # Rule-based priority determination
-                    priority = "HIGH PRIORITY" if conf >= 0.85 else ("MEDIUM PRIORITY" if conf >= 0.65 else "LOW PRIORITY")
-
-                    event_id = f"det_{int(now * 1000)}"
-                    event_payload = {
-                        "event_id": event_id,
+                    "confidence": round(top_conf, 2),
+                    "confidence_pct": round(top_conf * 100, 1),
+                    "priority": priority,
+                    "hazard_status": hazard_status,
+                    "fire_status": fire_status,
+                    "spatial_hazard": spatial_hazard,
+                    "observation_location": {
+                        "latitude": drone_lat,
+                        "longitude": drone_lng,
+                        "altitude": drone_alt,
                         "timestamp": datetime.utcnow().isoformat() + "Z",
-                        "class": cls_name,
-                        "category": category,
-                        "display_name": display_name,
-                        "confidence": round(conf, 2),
-                        "confidence_pct": round(conf * 100, 1),
-                        "priority": priority,
-                        "bounding_box": {"x1": x1, "y1": y1, "w": w, "h": h},
-                        "observation_location": {
-                            "latitude": telem.get("lat", 30.4158),
-                            "longitude": telem.get("lng", 79.3245),
-                            "altitude": telem.get("altitudeM", 42.5),
-                            "speed": telem.get("speedMs", 8.6),
-                            "heading": telem.get("heading", 142.0),
-                            "timestamp": datetime.utcnow().isoformat() + "Z",
-                            "source": "SIMULATOR_DRONE"
-                        },
-                        "location_source": "SIMULATOR TELEMETRY"
-                    }
-                    self.event_history.append(event_payload)
-                    self.event_cooldowns[cls_name] = {"time": now, "confidence": conf}
-                    
-                    # Highlighted Formatted Terminal Output with Drone Telemetry Location
-                    drone_lat = telem.get('lat', 30.4158)
-                    drone_lng = telem.get('lng', 79.3245)
-                    print(f">>> [AERIS TARGET ACQUIRED] {display_name} ({priority}) | Conf: {conf*100:.1f}% | Drone Obs Point: [{drone_lat:.5f}, {drone_lng:.5f}] | Latency: {self.inference_time_ms:.1f}ms")
-                    
-                    if self.event_callback:
-                        self.event_callback(event_payload)
+                        "source": obs_loc.get("source", "PX4_SIMULATOR")
+                    },
+                    "location_source": "PX4_SIMULATOR"
+                }
 
-        # Decay hit tracker for absent classes
-        for tracked_cls in list(self.frame_hit_tracker.keys()):
-            if tracked_cls not in raw_detected_classes:
-                del self.frame_hit_tracker[tracked_cls]
-                if tracked_cls in self.box_smoothing_cache:
-                    del self.box_smoothing_cache[tracked_cls]
+                self.event_history.append(event_payload)
+                self.event_cooldowns[primary_trigger_cls] = {"time": now, "confidence": top_conf}
 
-        # Encode annotated frame to JPEG
+                # High-visibility terminal output
+                print(f">>> [AERIS AI EVENT] {display_name} ({priority}) | Conf: {top_conf*100:.1f}% | Drone Obs Point: [{drone_lat:.6f}, {drone_lng:.6f}] | Latency: {self.inference_time_ms:.1f}ms")
+
+                if self.event_callback:
+                    self.event_callback(event_payload)
+
+        # 6. Encode annotated frame to JPEG for live MJPEG video stream
         ret, jpeg = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         jpeg_bytes = jpeg.tobytes() if ret else None
+
+        summary_data = {
+            "persons": persons_count,
+            "fire": fire_count,
+            "smoke": smoke_count,
+            "hazard_status": hazard_status,
+            "fire_status": fire_status,
+            "spatial_hazard": spatial_hazard
+        }
 
         detection_payload = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "total_detections": len(current_detections),
             "detections": current_detections,
-            "model": self.model_name,
+            "summary": summary_data,
+            "models": {
+                "object_model": {
+                    "active": self.object_model_status == "ACTIVE",
+                    "name": self.object_model_name,
+                    "status": self.object_model_status
+                },
+                "fire_model": {
+                    "active": self.fire_model_status == "ACTIVE",
+                    "name": "models/fire_smoke_yolov8n.pt",
+                    "classes": self.supported_fire_classes,
+                    "status": self.fire_model_status
+                }
+            },
             "inference_fps": round(self.inference_fps, 1),
             "inference_time_ms": round(self.inference_time_ms, 1)
         }
@@ -409,22 +535,17 @@ class DetectionService:
             self.latest_annotated_jpeg = jpeg_bytes
             self.latest_detections = detection_payload
 
-        # Broadcast update to WebSocket
         if self.update_callback:
             self.update_callback(detection_payload)
 
     def _inference_loop(self):
-        """Continuous inference worker reading from shared real hardware camera."""
+        """Continuous inference worker processing live frames through both object & fire models."""
         from camera_service import camera_service
-        logger.info(f"High-Precision YOLO Detection Loop started using '{self.model_name}'.")
+        logger.info(f"Multi-Hazard Inference Loop active (Object: {self.object_model_name} • Fire: {self.fire_model_path}).")
         
         fps_smoothing = 0.9
         
         while self.is_running:
-            if not self.is_model_loaded or self.model is None:
-                time.sleep(0.3)
-                continue
-            
             with camera_service.frame_lock:
                 frame = camera_service.latest_frame
                 is_cam_avail = camera_service.is_camera_available
@@ -433,7 +554,6 @@ class DetectionService:
                 time.sleep(0.03)
                 continue
 
-            # If camera is in standby mode, deliver the standby frame directly without wasting CPU on YOLO
             if not is_cam_avail:
                 ret, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 with self.data_lock:
@@ -443,7 +563,17 @@ class DetectionService:
                         "timestamp": datetime.utcnow().isoformat() + "Z",
                         "total_detections": 0,
                         "detections": [],
-                        "model": self.model_name,
+                        "summary": {
+                            "persons": 0,
+                            "fire": 0,
+                            "smoke": 0,
+                            "hazard_status": "NORMAL",
+                            "fire_status": "NO_FIRE"
+                        },
+                        "models": {
+                            "object_model": {"active": self.object_model_status == "ACTIVE", "name": self.object_model_name},
+                            "fire_model": {"active": self.fire_model_status == "ACTIVE", "name": "models/fire_smoke_yolov8n.pt"}
+                        },
                         "inference_fps": 0.0,
                         "inference_time_ms": 0.0
                     }
@@ -452,16 +582,7 @@ class DetectionService:
 
             try:
                 t0 = time.time()
-                
-                # Single shared genuine YOLO inference on real camera frame
-                results = self.model.predict(
-                    source=frame,
-                    conf=self.confidence_threshold,
-                    iou=self.iou_threshold,
-                    imgsz=self.img_size,
-                    verbose=False
-                )
-                
+                self._process_frame(frame)
                 t1 = time.time()
                 dt = max(t1 - t0, 0.001)
                 current_fps = 1.0 / dt
@@ -473,67 +594,75 @@ class DetectionService:
                 
                 self.inference_time_ms = dt * 1000.0
                 self.total_frames_processed += 1
-                
-                self._process_detections(frame, results)
             except Exception as e:
-                logger.error(f"Inference error: {e}")
+                logger.error(f"Multi-hazard inference error: {e}")
                 time.sleep(0.1)
 
             time.sleep(0.01)
 
     def start(self):
-        """Initializes model and starts background inference thread."""
+        """Initializes both models and starts background multi-hazard inference thread."""
         if not self.is_running:
-            self._init_model()
+            self._init_models()
             self.is_running = True
             self.thread = threading.Thread(target=self._inference_loop, daemon=True)
             self.thread.start()
 
+    def shutdown(self):
+        """Cleanly stops inference worker."""
+        self.is_running = False
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+
     def get_status(self):
-        """Returns real AI engine metrics."""
+        """Returns comprehensive health and metrics for both AI detection models."""
+        with self.data_lock:
+            latest = self.latest_detections
+            
         return {
-            "status": "active" if self.is_model_loaded else "unavailable",
-            "model": self.model_name,
-            "model_label": AVAILABLE_MODELS.get(self.model_name, self.model_name),
-            "available_models": AVAILABLE_MODELS,
+            "status": "active" if (self.object_model_status == "ACTIVE" or self.fire_model_status == "ACTIVE") else "unavailable",
+            "models": {
+                "object_model": {
+                    "active": self.object_model_status == "ACTIVE",
+                    "name": self.object_model_name,
+                    "status": self.object_model_status
+                },
+                "fire_model": {
+                    "active": self.fire_model_status == "ACTIVE",
+                    "name": "models/fire_smoke_yolov8n.pt",
+                    "classes": self.supported_fire_classes,
+                    "status": self.fire_model_status
+                }
+            },
+            "summary": latest.get("summary", {
+                "persons": 0,
+                "fire": 0,
+                "smoke": 0,
+                "hazard_status": "NORMAL",
+                "fire_status": "NO_FIRE"
+            }),
             "confidence_threshold": self.confidence_threshold,
+            "fire_confidence_threshold": self.fire_confidence_threshold,
             "target_filter": self.target_filter,
-            "iou_threshold": self.iou_threshold,
             "inference_fps": round(self.inference_fps, 1),
             "inference_time_ms": round(self.inference_time_ms, 1),
             "total_frames_processed": self.total_frames_processed
         }
 
-    def get_latest_detections(self):
-        """Returns the latest genuine detection results."""
+    def set_config(self, model_name: str = None, confidence: float = None, target_filter: str = None):
+        """Dynamically updates confidence thresholds or class filters."""
         with self.data_lock:
-            return self.latest_detections
+            if confidence is not None:
+                self.confidence_threshold = max(0.20, min(0.95, float(confidence)))
+                self.fire_confidence_threshold = max(0.20, min(0.95, float(confidence)))
+            if target_filter is not None:
+                self.target_filter = target_filter
+        return self.get_status()
 
     def get_event_history(self):
-        """Returns the debounced chronological history of confirmed events."""
+        """Returns history of recorded multi-hazard detection events."""
         with self.data_lock:
             return list(self.event_history)
-
-    async def generate_annotated_frames(self):
-        """Yields MJPEG stream of YOLO annotated frames for /api/video/detection-feed asynchronously."""
-        while self.is_running:
-            with self.data_lock:
-                frame_data = self.latest_annotated_jpeg
-
-            if frame_data is not None:
-                yield (
-                    b'--frame\r\n'
-                    b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n'
-                )
-            await asyncio.sleep(0.033)
-
-    def shutdown(self):
-        """Releases resources and stops inference thread."""
-        logger.info("Stopping YOLO detection service...")
-        self.is_running = False
-        if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=1.0)
-        logger.info("YOLO detection service stopped.")
 
 
 # Shared singleton instance

@@ -180,12 +180,18 @@ class CameraService:
             "status": "active" if self.is_camera_available else "disconnected"
         }
 
-    def list_available_cameras(self, max_check=3):
-        """Returns list of camera devices without colliding with active capture handle."""
+    def list_available_cameras(self, max_check=6):
+        """Returns list of camera devices (Integrated, Phone Link, USB, OBS Virtual Camera)."""
         devices = []
         for i in range(max_check):
             if i == self.camera_index:
-                name = f"Camera {i} (Phone Link / Phone Cam)" if i == 1 else f"Camera {i} (Primary Webcam)"
+                name = f"Camera {i} (Active - Primary/OBS/Phone)"
+                if i == 0:
+                    name = "Camera 0 (Primary Webcam / Integrated)"
+                elif i == 1:
+                    name = "Camera 1 (Phone Link / OBS Virtual Camera)"
+                elif i == 2:
+                    name = "Camera 2 (OBS Virtual Camera / USB Source)"
                 devices.append({
                     "index": i,
                     "name": name,
@@ -194,7 +200,7 @@ class CameraService:
                 })
                 continue
 
-            # For other inactive devices
+            # Check for inactive camera devices
             try:
                 test_cap = cv2.VideoCapture(i, cv2.CAP_DSHOW) if os.name == 'nt' else cv2.VideoCapture(i)
                 if test_cap and test_cap.isOpened():
@@ -202,7 +208,7 @@ class CameraService:
                     test_cap.release()
                     if ret and frame is not None:
                         h, w = frame.shape[:2]
-                        label = f"Camera {i} (Primary - {w}x{h})" if i == 0 else f"Camera {i} (Phone Link / USB)"
+                        label = f"Camera {i} (OBS Virtual Camera / USB - {w}x{h})" if i >= 2 else (f"Camera {i} (Primary - {w}x{h})" if i == 0 else f"Camera {i} (Phone Link / OBS - {w}x{h})")
                         devices.append({
                             "index": i,
                             "name": label,
@@ -216,15 +222,21 @@ class CameraService:
             devices = [
                 {
                     "index": 1,
-                    "name": "Camera 1 (Phone Link / Phone Cam)",
+                    "name": "Camera 1 (Phone Link / OBS Virtual Camera)",
                     "is_active": (self.camera_index == 1),
                     "available": True
                 },
                 {
                     "index": 0,
-                    "name": "Camera 0 (Primary Webcam)",
+                    "name": "Camera 0 (Primary Webcam / Integrated)",
                     "is_active": (self.camera_index == 0),
                     "available": self.is_camera_available
+                },
+                {
+                    "index": 2,
+                    "name": "Camera 2 (OBS Virtual Camera / USB Cam)",
+                    "is_active": (self.camera_index == 2),
+                    "available": True
                 }
             ]
         return devices
