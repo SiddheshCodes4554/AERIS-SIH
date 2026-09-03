@@ -26,9 +26,9 @@ export default function LiveAICameraFeed({ missionState }) {
   const [isRecording, setIsRecording] = useState(true);
   const [cameraStatus, setCameraStatus] = useState('LIVE'); // 'LIVE' | 'STANDBY'
   const [devices, setDevices] = useState([
-    { index: 0, name: 'Camera 0 (Primary Webcam / Integrated)' },
-    { index: 1, name: 'Camera 1 (Phone Link / OBS Virtual Camera)' },
-    { index: 2, name: 'Camera 2 (OBS Virtual Camera / USB Cam)' }
+    { index: 1, name: '🎥 OBS Virtual Camera / Phone Link (CAM-1)' },
+    { index: 0, name: '📷 Primary Laptop Webcam (CAM-0)' },
+    { index: 2, name: '🎥 OBS Virtual Camera / USB (CAM-2)' }
   ]);
   const [selectedCameraIndex, setSelectedCameraIndex] = useState(1);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -43,6 +43,7 @@ export default function LiveAICameraFeed({ missionState }) {
     },
     summary: { persons: 0, fire: 0, smoke: 0, hazard_status: 'NORMAL', fire_status: 'NO_FIRE' },
     confidence_threshold: 0.45,
+    fire_confidence_threshold: 0.68,
     target_filter: 'ALL',
     inference_fps: 28.0
   });
@@ -185,8 +186,7 @@ export default function LiveAICameraFeed({ missionState }) {
   };
 
   const activeDeviceName = devices.find(d => d.index === selectedCameraIndex)?.name || `CAM-${selectedCameraIndex}`;
-  const isObsCam = activeDeviceName.toLowerCase().includes('obs') || selectedCameraIndex >= 2;
-  const isPhoneCam = selectedCameraIndex === 1 || activeDeviceName.toLowerCase().includes('phone');
+  const isObsCam = activeDeviceName.toLowerCase().includes('obs') || selectedCameraIndex >= 1;
 
   const summary = aiStatus.summary || {};
   const hazardStatus = summary.hazard_status || 'NORMAL';
@@ -238,7 +238,7 @@ export default function LiveAICameraFeed({ missionState }) {
             </div>
           </div>
 
-          {/* 2. Top Control Strips: Mode, Camera Device & Dual Model Status */}
+          {/* 2. Top Control Strips: Mode, Camera Device Selector & Quick OBS Switch */}
           <div className="space-y-1.5 mb-2">
             <div className="flex items-center space-x-1.5">
               {/* Mode Switcher Tabs: [ RGB ] [ THERMAL ] [ AI OVERLAY ] */}
@@ -262,20 +262,28 @@ export default function LiveAICameraFeed({ missionState }) {
                 ))}
               </div>
 
-              {/* Camera Device Selector Dropdown (Includes OBS Virtual Camera) */}
+              {/* Dedicated OBS Virtual Camera Quick Switch Button */}
+              <button
+                onClick={() => handleSelectCamera(selectedCameraIndex === 1 ? 2 : 1)}
+                className={`px-2 py-1 rounded text-[8.5px] font-mono font-bold transition-all flex items-center shrink-0 border ${
+                  isObsCam 
+                    ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-[0_0_8px_rgba(245,166,35,0.3)]' 
+                    : 'bg-white/5 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                }`}
+                title="Quick Switch Active Feed to OBS Virtual Camera"
+              >
+                <Flame className="w-3 h-3 mr-1 text-amber-400" />
+                🎥 OBS VIRTUAL CAM
+              </button>
+
+              {/* Camera Device Selector Dropdown */}
               <div className="flex items-center bg-[#15191C] border border-white/10 rounded-card px-2 py-0.5 text-[9px] font-mono text-[#E8ECEF]">
-                {isObsCam ? (
-                  <Flame className="w-2.5 h-2.5 text-amber-400 mr-1 shrink-0" />
-                ) : isPhoneCam ? (
-                  <Smartphone className="w-2.5 h-2.5 text-aeris-green mr-1 shrink-0" />
-                ) : (
-                  <Camera className="w-2.5 h-2.5 text-aeris-cyan mr-1 shrink-0" />
-                )}
+                <Camera className="w-2.5 h-2.5 text-aeris-cyan mr-1 shrink-0" />
                 <select
                   value={selectedCameraIndex}
                   onChange={(e) => handleSelectCamera(e.target.value)}
-                  className="bg-transparent text-[#E8ECEF] focus:outline-none cursor-pointer text-[9px] font-bold pr-1 max-w-[150px] truncate"
-                  title="Select Camera Device / OBS Virtual Camera"
+                  className="bg-transparent text-[#E8ECEF] focus:outline-none cursor-pointer text-[9px] font-bold pr-1 max-w-[170px] truncate"
+                  title="Select Active Camera Input Device"
                 >
                   {devices.map((d) => (
                     <option key={d.index} value={d.index} className="bg-[#111516] text-[#E8ECEF]">
@@ -361,8 +369,8 @@ export default function LiveAICameraFeed({ missionState }) {
           {/* Top HUD Telemetry Overlay */}
           <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-white/90 drop-shadow pointer-events-none">
             <div className="bg-black/70 px-2 py-0.5 rounded border border-white/10 flex items-center space-x-1.5 backdrop-blur-sm">
-              <span className={`${isObsCam ? 'text-amber-400 font-bold' : (isPhoneCam ? 'text-aeris-green font-bold' : 'text-aeris-cyan font-bold')}`}>
-                {isObsCam ? '🎥 OBS VIRTUAL CAMERA' : (isPhoneCam ? '📱 PHONE LINK (CAM-1)' : `CAM-${selectedCameraIndex} (PRIMARY)`)}
+              <span className="text-amber-400 font-bold">
+                🎥 {activeDeviceName}
               </span>
               <span className="text-white/40">|</span>
               <span>ALT {typeof missionState.altitude === 'number' ? `${missionState.altitude.toFixed(1)}m` : missionState.altitude || '42.5m'}</span>
@@ -379,7 +387,7 @@ export default function LiveAICameraFeed({ missionState }) {
             </button>
           </div>
 
-          {/* Bottom HUD HUD Status Overlay */}
+          {/* Bottom HUD Status Overlay */}
           <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-white/90 drop-shadow pointer-events-none">
             <div className="flex items-center space-x-2">
               <div className="bg-black/70 px-2 py-0.5 rounded border border-white/10 flex items-center space-x-1 backdrop-blur-sm">
