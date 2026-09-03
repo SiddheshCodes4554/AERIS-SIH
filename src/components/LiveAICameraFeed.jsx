@@ -17,6 +17,7 @@ import {
   Sliders,
   ShieldAlert,
   Target,
+  Users,
   X
 } from 'lucide-react';
 
@@ -353,8 +354,28 @@ export default function LiveAICameraFeed({ missionState }) {
               <span>SPD {missionState.speed}</span>
             </div>
 
-            <div className="bg-black/70 px-2 py-0.5 rounded border border-white/10 text-aeris-green font-bold backdrop-blur-sm">
-              GPS ACTIVE
+            <div className="flex items-center space-x-1.5">
+              {aiStatus.hazard_level === 'CRITICAL' && (
+                <div className="bg-red-950/85 px-2 py-0.5 rounded border border-red-500 text-red-400 font-bold backdrop-blur-sm animate-pulse flex items-center space-x-1">
+                  <Flame className="w-3 h-3 text-red-400 animate-bounce" />
+                  <span>🔥 CRITICAL HAZARD</span>
+                </div>
+              )}
+              {aiStatus.hazard_level === 'HAZARD' && (
+                <div className="bg-orange-950/85 px-2 py-0.5 rounded border border-orange-500 text-orange-400 font-bold backdrop-blur-sm flex items-center space-x-1">
+                  <Flame className="w-3 h-3 text-orange-400" />
+                  <span>🔥 FIRE DETECTED</span>
+                </div>
+              )}
+              {aiStatus.hazard_level === 'WATCH' && (
+                <div className="bg-green-950/85 px-2 py-0.5 rounded border border-green-500 text-green-400 font-bold backdrop-blur-sm flex items-center space-x-1">
+                  <Users className="w-3 h-3 text-green-400" />
+                  <span>👤 PERSON DETECTED</span>
+                </div>
+              )}
+              <div className="bg-black/70 px-2 py-0.5 rounded border border-white/10 text-aeris-green font-bold backdrop-blur-sm">
+                GPS ACTIVE
+              </div>
             </div>
           </div>
 
@@ -375,8 +396,16 @@ export default function LiveAICameraFeed({ missionState }) {
               REC ● LIVE • 30 FPS
             </div>
 
-            <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-aeris-cyan font-bold backdrop-blur-sm">
-              {aiStatus.model || 'YOLOv8'} • {aiStatus.inference_fps || 28} FPS ({aiStatus.device?.toUpperCase() || 'CPU'})
+            <div className="bg-black/70 px-1.5 py-0.5 rounded border border-white/10 text-aeris-cyan font-bold backdrop-blur-sm flex items-center space-x-1.5">
+              <span>{aiStatus.model || 'YOLOv8'} • {aiStatus.inference_fps || 28} FPS</span>
+              {aiStatus.fire_model_available && (
+                <>
+                  <span className="text-white/30">|</span>
+                  <span className={aiStatus.fire_detected ? "text-red-400 font-bold animate-pulse" : "text-orange-400/80"}>
+                    🔥 FIRE AI {aiStatus.fire_detected ? 'DETECTED' : 'READY'}
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>

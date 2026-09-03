@@ -98,15 +98,27 @@ export default function AIDetectionsPanel({ onDetectionsUpdate }) {
           </h2>
         </div>
         <div className="flex items-center space-x-1">
-          <span className={`text-[8.5px] font-mono px-1.5 py-0.2 rounded font-bold ${
-            aiStatus.status === 'active'
-              ? 'bg-aeris-green/15 text-aeris-green border border-aeris-green/30'
-              : 'bg-aeris-amber/15 text-aeris-amber border border-aeris-amber/30 animate-pulse'
-          }`}>
-            {aiStatus.status === 'active' 
-              ? `EDGE AI • ${aiStatus.inference_fps || 28} FPS` 
-              : 'AI INITIALIZING...'}
-          </span>
+          {aiStatus.hazard_level === 'CRITICAL' ? (
+            <span className="text-[8.5px] font-mono px-1.5 py-0.2 rounded font-bold bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse flex items-center space-x-1">
+              <Flame className="w-2.5 h-2.5 text-red-400 animate-bounce" />
+              <span>CRITICAL HAZARD</span>
+            </span>
+          ) : aiStatus.hazard_level === 'HAZARD' ? (
+            <span className="text-[8.5px] font-mono px-1.5 py-0.2 rounded font-bold bg-orange-500/20 text-orange-400 border border-orange-500/40 flex items-center space-x-1">
+              <Flame className="w-2.5 h-2.5 text-orange-400" />
+              <span>FIRE DETECTED</span>
+            </span>
+          ) : (
+            <span className={`text-[8.5px] font-mono px-1.5 py-0.2 rounded font-bold ${
+              aiStatus.status === 'active'
+                ? 'bg-aeris-green/15 text-aeris-green border border-aeris-green/30'
+                : 'bg-aeris-amber/15 text-aeris-amber border border-aeris-amber/30 animate-pulse'
+            }`}>
+              {aiStatus.status === 'active' 
+                ? `EDGE AI • ${aiStatus.inference_fps || 28} FPS` 
+                : 'AI INITIALIZING...'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -115,31 +127,45 @@ export default function AIDetectionsPanel({ onDetectionsUpdate }) {
         {/* Currently Active Live Detection Card */}
         {liveDetections.length > 0 && liveDetections.map((det, idx) => {
           const pct = det.confidence_pct || Math.round((det.confidence || 0.95) * 100);
-          const priority = pct >= 85 ? 'HIGH PRIORITY' : (pct >= 65 ? 'MEDIUM PRIORITY' : 'LOW PRIORITY');
-          const isPerson = det.category === 'HUMAN' || det.class === 'person';
+          const isFire = det.class === 'fire' || det.category === 'HAZARD';
+          const priority = det.priority || (pct >= 85 ? 'HIGH PRIORITY' : (pct >= 65 ? 'MEDIUM PRIORITY' : 'LOW PRIORITY'));
 
           return (
             <div
               key={`live-${idx}`}
-              className="aeris-surface-card p-2 flex flex-col justify-between font-mono text-[10px] border-l-2 border-l-aeris-green bg-aeris-green/10 shadow-[0_0_10px_rgba(99,193,116,0.2)] animate-pulse rounded-card"
+              className={`aeris-surface-card p-2 flex flex-col justify-between font-mono text-[10px] border-l-2 ${
+                isFire 
+                  ? 'border-l-red-500 bg-red-500/10 shadow-[0_0_10px_rgba(239,68,68,0.3)]' 
+                  : 'border-l-aeris-green bg-aeris-green/10 shadow-[0_0_10px_rgba(99,193,116,0.2)]'
+              } animate-pulse rounded-card`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-1.5">
-                  <Target className="w-3.5 h-3.5 text-aeris-green animate-spin" />
-                  <span className="font-bold text-aeris-green tracking-wide text-[11px]">
+                  {isFire ? (
+                    <Flame className="w-3.5 h-3.5 text-red-400 animate-bounce" />
+                  ) : (
+                    <Target className="w-3.5 h-3.5 text-aeris-green animate-spin" />
+                  )}
+                  <span className={`font-bold tracking-wide text-[11px] ${isFire ? 'text-red-400' : 'text-aeris-green'}`}>
                     {det.display_name}
                   </span>
-                  <span className="text-[8px] px-1 py-0.2 rounded bg-aeris-green/25 text-aeris-green font-bold">
-                    IN SIGHT
+                  <span className={`text-[8px] px-1 py-0.2 rounded font-bold ${
+                    isFire ? 'bg-red-500/25 text-red-300' : 'bg-aeris-green/25 text-aeris-green'
+                  }`}>
+                    {isFire ? 'HAZARD' : 'IN SIGHT'}
                   </span>
                 </div>
-                <span className="text-[8px] font-bold px-1.5 py-0.2 rounded bg-aeris-green/20 text-aeris-green border border-aeris-green/40">
+                <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded border ${
+                  isFire 
+                    ? 'bg-red-500/20 text-red-400 border-red-500/40' 
+                    : 'bg-aeris-green/20 text-aeris-green border-aeris-green/40'
+                }`}>
                   {priority}
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-[9px] text-aeris-textSecondary mt-1">
-                <span>Confidence: <strong className="text-aeris-green font-mono">{pct}%</strong></span>
+                <span>Confidence: <strong className={`font-mono ${isFire ? 'text-red-400' : 'text-aeris-green'}`}>{pct}%</strong></span>
                 <span className="text-[8px] text-aeris-textMuted">REAL-TIME INFERENCE</span>
               </div>
             </div>
@@ -151,6 +177,7 @@ export default function AIDetectionsPanel({ onDetectionsUpdate }) {
           eventHistory.slice(0, 8).map((item) => {
             const pct = item.confidence_pct || Math.round((item.confidence || 0.95) * 100);
             const isPerson = item.class === 'person' || item.category === 'HUMAN';
+            const isFire = item.class === 'fire' || item.category === 'HAZARD';
             const priority = item.priority || (pct >= 85 ? 'HIGH PRIORITY' : (pct >= 65 ? 'MEDIUM PRIORITY' : 'LOW PRIORITY'));
             const obs = item.observation_location;
 
@@ -158,19 +185,22 @@ export default function AIDetectionsPanel({ onDetectionsUpdate }) {
               <div
                 key={item.event_id}
                 className={`aeris-surface-card p-2 flex flex-col font-mono text-[10px] border-l-2 rounded-card space-y-1 ${
-                  isPerson ? 'border-l-aeris-green bg-aeris-green/5' : 'border-l-aeris-cyan bg-aeris-cyan/5'
+                  isFire 
+                    ? 'border-l-red-500 bg-red-500/5' 
+                    : (isPerson ? 'border-l-aeris-green bg-aeris-green/5' : 'border-l-aeris-cyan bg-aeris-cyan/5')
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-1">
-                    <span className={`font-bold ${isPerson ? 'text-aeris-green' : 'text-aeris-cyan'}`}>
+                    {isFire && <Flame className="w-3 h-3 text-red-400" />}
+                    <span className={`font-bold ${isFire ? 'text-red-400' : (isPerson ? 'text-aeris-green' : 'text-aeris-cyan')}`}>
                       {item.display_name}
                     </span>
                     <span className="text-[7.5px] px-1 py-0.2 rounded bg-white/5 text-aeris-textSecondary">
                       {priority}
                     </span>
                   </div>
-                  <span className="text-[8.5px] text-aeris-green font-bold">
+                  <span className={`text-[8.5px] font-bold ${isFire ? 'text-red-400' : 'text-aeris-green'}`}>
                     {pct}%
                   </span>
                 </div>

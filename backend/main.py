@@ -124,6 +124,7 @@ class AIConfigRequest(BaseModel):
     model_name: Optional[str] = None
     confidence_threshold: Optional[float] = None
     target_filter: Optional[str] = None
+    fire_confidence_threshold: Optional[float] = None
 
 class ZoneSelectRequest(BaseModel):
     zone_id: str
@@ -228,11 +229,12 @@ async def ai_status():
 
 @app.post("/api/ai/config")
 async def set_ai_config(payload: AIConfigRequest):
-    """Updates AI model (yolov8s, yolov8m, yolov8n), confidence threshold, or class filter."""
+    """Updates AI model (yolov8s, yolov8m, yolov8n), confidence threshold, fire confidence, or class filter."""
     result = detection_service.set_config(
         model_name=payload.model_name,
         confidence=payload.confidence_threshold,
-        target_filter=payload.target_filter
+        target_filter=payload.target_filter,
+        fire_confidence=payload.fire_confidence_threshold
     )
     return {"success": True, "status": result}
 
