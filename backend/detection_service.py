@@ -72,7 +72,7 @@ class DetectionService:
         self.fire_model_path = os.getenv("FIRE_MODEL", os.path.join(os.getcwd(), "models", "fire_smoke_yolov8n.pt"))
         
         self.confidence_threshold = float(os.getenv("YOLO_CONFIDENCE", "0.45"))
-        self.fire_confidence_threshold = float(os.getenv("FIRE_CONFIDENCE", "0.40"))
+        self.fire_confidence_threshold = float(os.getenv("FIRE_CONFIDENCE", "0.68"))
         self.iou_threshold = float(os.getenv("YOLO_IOU", "0.50"))
         self.img_size = int(os.getenv("YOLO_IMG_SIZE", "640"))
         self.target_filter = "ALL" # "ALL" | "HUMAN_ONLY" | "VEHICLES" | "GEAR" | "HAZARDS"
@@ -336,7 +336,7 @@ class DetectionService:
                 logger.error(f"Object model inference error: {e}")
 
         # 2. Run Model B: Dedicated Fire & Smoke Detection Model
-        if self.fire_model is not None and self.fire_model_status == "ACTIVE":
+        if self.fire_model is not None and self.fire_model_status == "ACTIVE" and self.target_filter in ["ALL", "HAZARDS"]:
             try:
                 res_fire = self.fire_model.predict(
                     source=frame,
@@ -351,9 +351,21 @@ class DetectionService:
                         raw_name = self.fire_model.names.get(cls_id, "fire").lower()
                         conf = float(box.conf[0].item())
 
+                        # Strict confidence threshold for fire/smoke false-positive rejection
+                        if conf < self.fire_confidence_threshold:
+                            continue
+
                         # Map model label to standard class name ('fire' or 'smoke')
                         cls_name = "smoke" if "smoke" in raw_name else "fire"
                         
+                        # Multi-frame persistence: require 3 consecutive hits for low/medium conf
+                        hit_key = f"fire_{cls_name}"
+                        hit_count = self.frame_hit_tracker.get(hit_key, 0) + 1
+                        self.frame_hit_tracker[hit_key] = hit_count
+
+                        if hit_count < 3 and conf < 0.85:
+                            continue # Ignore transient false positive candidates
+
                         info = SEARCH_CLASSES.get(cls_name, {"display": "🔥 FIRE", "category": "HAZARD", "color": (30, 45, 255)})
                         category = "HAZARD"
 
@@ -364,7 +376,7 @@ class DetectionService:
 
                         raw_detected_classes.add(cls_name)
                         raw_xyxy = box.xyxy[0].tolist()
-                        smoothed_xyxy = self._smooth_box(f"fire_{cls_name}", raw_xyxy)
+                        smoothed_xyxy = self._smooth_box(hit_key, raw_xyxy)
 
                         x1, y1, x2, y2 = smoothed_xyxy
                         w = x2 - x1
